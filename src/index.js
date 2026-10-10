@@ -44,16 +44,22 @@ setInterval(poll, config.pollMinutes * 60_000); // then periodically
 if (config.waEnabled) {
   const { startWhatsApp } = await import('./whatsapp/client.js'); // loaded only when needed
   const { createSender } = await import('./whatsapp/sender.js'); // delivery queue
-  const { handleCommand, textOf } = await import('./whatsapp/commands.js'); // owner commands
+  const { handleCommand, textOf, autoLink, autoLinkReport } = await import('./whatsapp/commands.js'); // owner commands
   const { keepaliveTick, selfJid } = await import('./whatsapp/keepalive.js'); // weekly reminder
   const state = {}; // command session state (last !gruppi listing)
+  const courses = new Map(sources.courses.map((c) => [c.id, c.name])); // course id -> exact group name expected
   const wa = startWhatsApp({
     authDir: join(config.dataDir, 'wa-auth'), // session folder
     pairingNumber: config.waPairingNumber, // bot's own number for the pairing code
     log, // logger
     onMessage: async (msg, sock) => {
-      const reply = await handleCommand(textOf(msg), { db, sock, names, state }); // run command
+      const reply = await handleCommand(textOf(msg), { db, sock, names, state, courses }); // run command
       if (reply) await sock.sendMessage(selfJid(sock.user), { text: reply }); // answer in the self chat only
+    },
+    // On every connection: link courses to the groups named like them (once per course), then tell the owner.
+    onOpen: async (sock) => {
+      const r = await autoLink({ db, sock, courses, force: false }); // first-time links only
+      if (r.linked.length) await sock.sendMessage(selfJid(sock.user), { text: autoLinkReport(r) }); // silent when nothing changed
     },
   });
   waStatus = wa.getStatus; // /health now reports the real connection state

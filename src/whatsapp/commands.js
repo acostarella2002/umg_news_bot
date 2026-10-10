@@ -20,10 +20,59 @@ export const textOf = (msg) => {
   return m?.conversation ?? m?.extendedTextMessage?.text ?? ''; // other types ignored
 };
 
+// Group names are compared loosely: case, accents, curly apostrophes (phone keyboards) and extra spaces do not matter.
+export const normalizeName = (s) =>
+  String(s ?? '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '') // drop accents
+    .replace(/[‘’`´]/g, "'") // ’ ‘ ` ´ -> '
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+// Link every course without a group to the group named exactly like the course in sources.json.
+// force = false (automatic run at connection): each course is auto-linked only once, so a later !dissocia is respected.
+export async function autoLink({ db, sock, courses, force }) {
+  const byName = new Map(); // normalized group name -> groups with that name (participants are NOT read)
+  for (const g of Object.values(await sock.groupFetchAllParticipating()))
+    if (!g.isCommunity) byName.set(normalizeName(g.subject), [...(byName.get(normalizeName(g.subject)) ?? []), g]); // the community itself cannot receive messages
+  const mapped = new Set(listMappings(db).map((m) => m.target)); // courses that already have a group
+  const result = { linked: [], already: 0, ambiguous: [], missing: [] }; // [id, name or group subject] pairs
+  for (const [id, name] of courses) {
+    if (mapped.has(id))
+      result.already++; // never touch an existing link
+    else if (!force && getKv(db, `automap:${id}`))
+      continue; // auto-linked once and later unlinked by the owner
+    else {
+      const found = byName.get(normalizeName(name)) ?? []; // groups with the course name
+      if (found.length === 1) {
+        mapGroup(db, id, found[0].id); // link
+        setKv(db, `automap:${id}`, found[0].id); // remember it was done
+        result.linked.push([id, found[0].subject]);
+      } else (found.length ? result.ambiguous : result.missing).push([id, name]); // two groups with one name, or none
+    }
+  }
+  return result;
+}
+
+// Readable summary of an autoLink run (never starts with "!").
+export const autoLinkReport = (r) =>
+  [
+    '🔗 *Associazione automatica gruppi → corsi*',
+    r.linked.length ? `✅ Collegati ora (${r.linked.length}):\n${r.linked.map(([id, s]) => `• ${s} → ${id}`).join('\n')}` : '✅ Nessun nuovo collegamento.',
+    `☑️ Corsi che avevano già un gruppo: ${r.already}`,
+    r.ambiguous.length &&
+      `⚠️ Più gruppi con lo stesso nome, collegali a mano con !associa (${r.ambiguous.length}):\n${r.ambiguous.map(([, n]) => `• ${n}`).join('\n')}`,
+    r.missing.length && `❓ Nessun gruppo con il nome del corso (${r.missing.length}):\n${r.missing.map(([, n]) => `• ${n}`).join('\n')}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
 // Help text listing every command.
 const HELP = [
   '🤖 *Comandi UMG News Bot*',
   '!stato – stato del bot',
+  '!autoassocia – collega ogni corso al gruppo con lo stesso nome',
   '!gruppi – elenca i gruppi in cui è il bot (numerati)',
   '!target [filtro] – elenca gli id di corsi/scuole/feed',
   '!associa <n|jid> <target> [target…] – collega un gruppo',
@@ -35,7 +84,7 @@ const HELP = [
 
 // Handle one command; returns the reply text (null when the text is not a command).
 // state.groups caches the last !gruppi listing so groups can be referenced by number.
-export async function handleCommand(text, { db, sock, names, state }) {
+export async function handleCommand(text, { db, sock, names, state, courses = new Map() }) {
   if (!text.startsWith('!')) return null; // replies of the bot never start with "!"
   const [raw, ...args] = text.trim().split(/\s+/); // command + arguments
   const cmd = raw.toLowerCase(); // phones auto-capitalise the first letter ("!Associa")
@@ -47,6 +96,8 @@ export async function handleCommand(text, { db, sock, names, state }) {
     case '!aiuto':
     case '!help':
       return HELP; // command list
+    case '!autoassocia':
+      return autoLinkReport(await autoLink({ db, sock, courses, force: true })); // explicit request: also re-links courses unlinked earlier
     case '!stato':
       return [
         '📊 *Stato*', // header

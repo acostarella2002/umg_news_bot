@@ -13,7 +13,7 @@ export const reconnectDelay = (code, retryMs) =>
   code === DisconnectReason.loggedOut ? null : code === DisconnectReason.connectionReplaced ? REPLACED_PAUSE_MS : retryMs;
 
 // Start the client; returns getSock() (live socket or null while disconnected) and getStatus() for /health.
-export function startWhatsApp({ authDir, pairingNumber, log, onMessage }) {
+export function startWhatsApp({ authDir, pairingNumber, log, onMessage, onOpen }) {
   mkdirSync(authDir, { recursive: true, mode: 0o700 }); // session keys readable only by the bot user
   let current = null; // live socket when connected
   let retryMs = 5000; // reconnect backoff, grows up to 5 minutes
@@ -62,6 +62,7 @@ export function startWhatsApp({ authDir, pairingNumber, log, onMessage }) {
         retryMs = 5000;
         status = 'connected';
         log.info('whatsapp connected');
+        Promise.resolve(onOpen?.(sock)).catch((e) => log.error({ err: redact(e.message) }, 'on-connect task failed')); // e.g. automatic group linking
       } // ready
       if (connection === 'close') {
         current = null; // stop sending

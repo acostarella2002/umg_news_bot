@@ -79,22 +79,25 @@ The bot speaks the WhatsApp Web protocol through the Baileys library, which is n
 
 ### Environment variables
 
-The configuration lives in the `.env` file, created from `.env.example`.
+The configuration lives in the `.env` file, created on the server by copying `.env.example` (`cp .env.example .env`). The values in `.env.example` are the recommended ones and already include the bot's WhatsApp Business number, so on the server you normally only need to change `BASE_URL`.
 
-| Variable             | Default                 | Description                                                                                                                                       |
-| -------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BASE_URL`           | `http://localhost:8080` | Public address of the server, used in feed links (e.g. `http://<server-IP>:8080`).                                                                |
-| `PORT`               | `8080`                  | HTTP port inside the container.                                                                                                                   |
-| `POLL_MINUTES`       | `15`                    | Minutes between two board checks.                                                                                                                 |
-| `WA_ENABLED`         | `true`                  | Set to `false` to run the RSS feeds only, without WhatsApp.                                                                                       |
-| `WA_PAIRING_NUMBER`  | —                       | Phone number of the **bot's** WhatsApp Business account, international format, digits only (e.g. `393331234567`). Needed only for the first link. |
-| `SEND_MIN_DELAY_S`   | `8`                     | Minimum pause between two messages, in seconds.                                                                                                   |
-| `SEND_MAX_DELAY_S`   | `20`                    | Maximum pause between two messages, in seconds.                                                                                                   |
-| `SLOW_MIN_DELAY_S`   | `120`                   | Minimum pause when more than 10 messages are queued.                                                                                              |
-| `SLOW_MAX_DELAY_S`   | `180`                   | Maximum pause when more than 10 messages are queued.                                                                                              |
-| `MAX_SENDS_PER_HOUR` | `40`                    | Maximum number of messages per hour.                                                                                                              |
-| `KEEPALIVE_DAYS`     | `7`                     | Days between two reminders in the "Message yourself" chat.                                                                                        |
-| `LOG_LEVEL`          | `info`                  | Log detail: `fatal`, `error`, `warn`, `info`, `debug`.                                                                                            |
+> [!CAUTION]
+> `.env.example` contains the bot's real phone number. Do not publish it in a public repository: a public number attracts spam and increases the risk of a ban. If you publish the code, replace it with a placeholder and keep the real number only in the server's `.env`.
+
+| Variable             | Default                 | Description                                                                                                                                                                      |
+| -------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BASE_URL`           | `http://localhost:8080` | Public address of the server, used in feed links (e.g. `http://<server-IP>:8080`).                                                                                               |
+| `PORT`               | `8080`                  | HTTP port inside the container.                                                                                                                                                  |
+| `POLL_MINUTES`       | `15`                    | Minutes between two board checks.                                                                                                                                                |
+| `WA_ENABLED`         | `true`                  | Set to `false` to run the RSS feeds only, without WhatsApp.                                                                                                                      |
+| `WA_PAIRING_NUMBER`  | already set             | Phone number of the **bot's** WhatsApp Business account, international format, digits only (country code `39` without `+`). Used only to obtain the pairing code the first time. |
+| `SEND_MIN_DELAY_S`   | `8`                     | Minimum pause between two messages, in seconds.                                                                                                                                  |
+| `SEND_MAX_DELAY_S`   | `20`                    | Maximum pause between two messages, in seconds.                                                                                                                                  |
+| `SLOW_MIN_DELAY_S`   | `120`                   | Minimum pause when more than 10 messages are queued.                                                                                                                             |
+| `SLOW_MAX_DELAY_S`   | `180`                   | Maximum pause when more than 10 messages are queued.                                                                                                                             |
+| `MAX_SENDS_PER_HOUR` | `40`                    | Maximum number of messages per hour.                                                                                                                                             |
+| `KEEPALIVE_DAYS`     | `6`                     | Days between two reminders in the "Message yourself" chat. Keep it well below 14 (see [Reminder](#reminder-to-open-the-phone)).                                                  |
+| `LOG_LEVEL`          | `info`                  | Log detail: `fatal`, `error`, `warn`, `info`, `debug`.                                                                                                                           |
 
 ### Notice boards
 
@@ -109,23 +112,173 @@ After the change, check that the new board is read correctly with `npm run check
 
 ## WhatsApp commands
 
-Commands are written **only** in the _"Message yourself"_ chat (_"Messaggio a te stesso"_ on Italian phones) of the bot's WhatsApp Business account, from the primary phone. They are ignored in any other chat. Upper and lower case are equivalent. The bot replies in Italian.
+You control the bot by writing commands in a special chat of the bot's WhatsApp Business account. There is no website or admin panel: this chat is the only control panel.
 
-| Command                        | Effect                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------- |
-| `!aiuto`                       | Shows the list of commands.                                               |
-| `!stato`                       | Shows the last check, queued, sent and failed messages, and links.        |
-| `!gruppi`                      | Lists, numbered, the groups the bot belongs to.                           |
-| `!target [filter]`             | Lists the identifiers of courses, schools and feeds.                      |
-| `!associa <n\|jid> <target…>`  | Links a group to one or more targets, after checking the bot is a member. |
-| `!dissocia <n\|jid> <target…>` | Unlinks a group.                                                          |
-| `!mappa`                       | Shows the current links and flags those that are no longer valid.         |
-| `!test <target>`               | Shows a preview of the latest notice, visible only to you.                |
-| `!pausa` / `!riprendi`         | Pauses or resumes sending.                                                |
+### Where to write the commands
 
-**Example.** `!gruppi` returns the numbered list; `!associa 3 medicina_chirurgia` links group no. 3 to the Medicine and Surgery course. With `!associa 1 ateneo fondazione` you link several targets to the same group, for instance the community announcement group. The bot replies with the name of the linked group: always check it.
+1. Take the phone where the **bot's WhatsApp Business account** is installed (the primary phone).
+2. Open the chat with yourself: start a new chat and pick the first contact, marked _"(You)"_ / _"(Tu)"_. On Italian phones it is called _"Messaggio a te stesso"_, in English _"Message yourself"_.
+3. Write a command, send it, and wait a few seconds for the bot's reply in the same chat.
 
-**Weekly reminder.** Every 7 days the bot writes a status summary in the "Message yourself" chat. It reminds you to open WhatsApp Business on the primary phone: if the phone stays offline for about 14 days, WhatsApp unlinks the bot.
+Rules to keep in mind:
+
+- **Only this chat works.** Commands written in groups or in any other chat are ignored, so nobody else can control the bot.
+- **Every command starts with `!`** and is a single word, sometimes followed by values separated by spaces (e.g. `!associa 3 giurisprudenza`).
+- **Upper and lower case do not matter.** `!Associa` works like `!associa` (phones capitalise the first letter automatically).
+- **The bot must be online.** A command sent more than 2 minutes before the bot comes online is ignored: if you get no reply, wait a minute and send it again.
+- **The bot always replies in Italian.**
+
+### Words you will meet
+
+- **Target**: what a group can receive. Each course, school and news source has a short identifier, its _id_, e.g. `giurisprudenza` for the Law course, `medicina` for the School of Medicine, `ateneo` for university notices and `fondazione` for UMG Foundation notices. `!target` lists them all.
+- **Link**: the connection between a WhatsApp group and one or more targets. A linked group receives every new notice of its targets.
+- **Group number**: the position of a group in the list shown by `!gruppi`. It is a shortcut for the group's technical identifier (the _JID_, e.g. `120363012345678901@g.us`), which you can also use instead of the number.
+
+### Commands at a glance
+
+| Command                       | What it does                                               |
+| ----------------------------- | ---------------------------------------------------------- |
+| `!aiuto`                      | Lists the commands.                                        |
+| `!stato`                      | Shows whether the bot is working.                          |
+| `!autoassocia`                | Links every course to the group with the same name.        |
+| `!gruppi`                     | Lists the groups the bot belongs to, numbered.             |
+| `!target [word]`              | Lists the ids of courses, schools and sources.             |
+| `!associa <group> <target…>`  | Links a group to one or more targets.                      |
+| `!dissocia <group> <target…>` | Removes a link.                                            |
+| `!mappa`                      | Shows every link and flags the broken ones.                |
+| `!test <target>`              | Previews the latest notice of a target, only in this chat. |
+| `!pausa` / `!riprendi`        | Stops or restarts sending to the groups.                   |
+
+### Each command in detail
+
+#### `!aiuto` — list of commands
+
+Replies with a short reminder of every command. Use it whenever you forget a command.
+
+#### `!stato` — is the bot working?
+
+```
+📊 *Stato*
+Ultimo controllo: 2026-10-10T10:15:02.000Z
+In coda: 0
+Inviati ultima ora: 3
+Falliti ultime 24h: 0
+Collegamenti: 42
+Invii: ▶️ attivi
+```
+
+How to read it:
+
+- **Ultimo controllo** (last check): when the boards were last read, in UTC time (Italian time minus 1 or 2 hours). It should never be older than about 15 minutes.
+- **In coda** (queued): messages waiting to be sent. A few dozen right after many notices is normal: the bot sends them slowly on purpose.
+- **Inviati ultima ora** (sent in the last hour): never above 40.
+- **Falliti ultime 24h** (failed in the last 24 hours): should be `0`. If not, a group is not receiving: usually the bot is not an admin of a group where only admins can write, or it was removed from a group. Check with `!mappa`.
+- **Collegamenti** (links): how many group–target links exist.
+- **Invii** (sending): `▶️ attivi` (active) or `⏸️ in pausa` (paused, see `!pausa`).
+
+#### `!autoassocia` — link the courses automatically
+
+Links every course of `config/sources.json` to the WhatsApp group whose name is **exactly the course name** (upper/lower case, accents, apostrophe style and extra spaces do not matter). This is the recommended way to do the first setup: it avoids linking a group to the wrong course. The exact names are listed in [step C.1](#c1-prepare-the-community-once).
+
+```
+🔗 *Associazione automatica gruppi → corsi*
+
+✅ Collegati ora (2):
+• Giurisprudenza → giurisprudenza
+• Farmacia → farmacia
+
+☑️ Corsi che avevano già un gruppo: 38
+
+❓ Nessun gruppo con il nome del corso (2):
+• Sociologia
+• Healthcare Management (LM)
+```
+
+- **Collegati ora**: the links just created (group name → course id).
+- **Corsi che avevano già un gruppo**: courses already linked; they are never changed.
+- **Più gruppi con lo stesso nome** (several groups with the same name): the bot does not guess. Rename or delete the extra group, or link it by hand with `!associa`.
+- **Nessun gruppo con il nome del corso** (no group with the course name): create the group, or fix its name, then send `!autoassocia` again.
+
+The same linking also runs **by itself every time the bot connects to WhatsApp**: if you create the groups before linking the bot (as in the guide), the courses are linked automatically and the bot sends you this report. The automatic run links each course only once, so if you later remove a link with `!dissocia` it will not come back by itself; `!autoassocia`, being an explicit request, links it again. Schools, `ateneo` and `fondazione` are never linked automatically: link them with `!associa`.
+
+#### `!gruppi` — list the groups
+
+```
+1. Bacheca UMG 🏘️ (bacheca)
+   120363000000000001@g.us
+2. Economia Aziendale 🏘️
+   120363000000000002@g.us
+3. Giurisprudenza 🏘️
+   120363000000000003@g.us
+```
+
+Lists, in alphabetical order, the groups the bot belongs to. 🏘️ marks the groups inside a community, `(bacheca)` the community announcement group. The number on the left is what you use in `!associa` and `!dissocia`.
+
+> [!NOTE]
+> Numbers are valid only until the bot restarts, and change when groups are added. Always send `!gruppi` again right before using a number.
+
+#### `!target` — find the ids
+
+Without a word it lists every id with its name; with a word it shows only the matching ones. `!target psico` replies:
+
+```
+psicologia_cognitiva_l – Scienze e Tecniche di Psicologia Cognitiva
+psicologia_cognitiva_neuroscienze – Psicologia Cognitiva e Neuroscienze (LM)
+psicologia_forense – Psicologia Forense e Criminologica (LM)
+```
+
+#### `!associa` — link a group by hand
+
+Write the group number (or JID), then one or more ids separated by spaces:
+
+```
+!associa 3 giurisprudenza
+!associa 1 ateneo fondazione
+```
+
+The bot checks that it really belongs to that group and replies with the group name: **always read it** to make sure you picked the right number.
+
+```
+✅ Collegato a "Giurisprudenza": giurisprudenza
+```
+
+Possible refusals:
+
+- `Il bot non è in questo gruppo…`: wrong number or JID, or the bot has left that group. Send `!gruppi` again.
+- `Questa è la community…`: you picked the community itself, which cannot receive messages. Pick its announcement group (`(bacheca)`) instead.
+- `Target sconosciuti: …` (unknown targets): an id is misspelled. Check it with `!target`.
+- `Uso: …` (usage): the number is not in the last `!gruppi` list, or something is missing.
+
+A new link only receives notices published **from now on**: older notices are never sent.
+
+#### `!dissocia` — remove a link
+
+Same format as `!associa`: `!dissocia 3 giurisprudenza`. The group stops receiving the notices of that target. It also works for groups the bot has already left.
+
+#### `!mappa` — check every link
+
+```
+ateneo → Bacheca UMG
+   120363000000000001@g.us
+giurisprudenza → Giurisprudenza
+   120363000000000003@g.us
+sociologia → ⚠️ bot non più nel gruppo
+   120363000000000009@g.us
+```
+
+Shows each target with the name of its group. `⚠️ bot non più nel gruppo` means the bot is no longer in that group: add the bot back, or remove the link with `!dissocia`.
+
+#### `!test` — preview a message
+
+`!test giurisprudenza` shows, **only in this chat**, the latest notice of that target exactly as the groups would receive it. Nothing is sent to the groups.
+
+#### `!pausa` and `!riprendi` — emergency stop
+
+`!pausa` stops every message to the groups immediately; RSS feeds keep working and new notices keep piling up in the queue. `!riprendi` restarts sending. Use it if something looks wrong, for example a burst of unexpected messages.
+
+### Reminder to open the phone
+
+Every 6 days (`KEEPALIVE_DAYS`) the bot writes a reminder with a short status in this chat. Its purpose: WhatsApp unlinks devices whose primary phone stays offline for about 14 days. When you see the reminder, just open WhatsApp Business on the phone and leave it connected to the Internet for a few minutes.
 
 ## RSS feeds and monitoring
 
@@ -152,7 +305,7 @@ Commands are written **only** in the _"Message yourself"_ chat (_"Messaggio a te
 | Command                 | Description                                                             |
 | ----------------------- | ----------------------------------------------------------------------- |
 | `npm ci`                | Installs the dependencies exactly at the locked versions.               |
-| `npm test`              | Runs the 54 automated tests (modules, security, end-to-end flow).       |
+| `npm test`              | Runs the 56 automated tests (modules, security, end-to-end flow).       |
 | `npm run lint`          | Checks the code with ESLint.                                            |
 | `npm run format:check`  | Checks formatting with Prettier (`npm run format` fixes it).            |
 | `npm run check:sources` | Checks every board live and reports the empty or unreachable ones.      |
@@ -316,11 +469,10 @@ cp .env.example .env
 nano .env
 ```
 
-In the editor set at least:
+The file already contains the recommended values and the bot's number. In the editor:
 
-- `WA_PAIRING_NUMBER` to the number of the bot's WhatsApp Business account (e.g. `393331234567`);
-- `BASE_URL` to `http://<IP>:8080`;
-- `WA_ENABLED=true`.
+- set `BASE_URL` to `http://<IP>:8080` (the feed links depend on it);
+- check that `WA_ENABLED=true` and that `WA_PAIRING_NUMBER` is the number of the bot's WhatsApp Business account.
 
 Save with `Ctrl+O`, `Enter`, and exit with `Ctrl+X`. Then prepare the data folder (it must belong to the container user, UID 1000) and start the service:
 
@@ -338,29 +490,82 @@ The first build takes a few minutes. Wait for the `PAIRING CODE: XXXX-XXXX` line
 
 From the phone with the **bot's WhatsApp Business account**:
 
-1. create the _"UMG automated news by Primavera Studentesca UMG"_ community and one group per course;
-2. in every group set _Group settings → Send messages → Only admins_;
-3. make the association's administrators admins of the community: they will post manually in the community announcement group.
+1. create the _"UMG automated news by Primavera Studentesca UMG"_ community;
+2. inside the community, create one group per course, naming each group **exactly like the course** in the table below (upper/lower case, accents and apostrophe style do not matter; every other character does, including the text in brackets);
+3. in every group set _Group settings → Send messages → Only admins_;
+4. make the association's administrators admins of the community: they will post manually in the community announcement group.
 
-Since the groups are created from the bot's account, the bot is automatically an admin and can write in them.
+Since the groups are created from the bot's account, the bot is automatically an admin and can write in them. Creating the groups **before** step C.2 lets the bot link them all by itself as soon as it connects.
+
+<details>
+<summary><strong>Exact group names (generated from <code>config/sources.json</code>)</strong></summary>
+
+| Group name (type it exactly like this)                                     | Course id                             | School                            |
+| -------------------------------------------------------------------------- | ------------------------------------- | --------------------------------- |
+| Infermieristica                                                            | `infermieristica`                     | Scuola di Medicina e Chirurgia    |
+| Infermieristica (Interateneo RC)                                           | `infermieristica_rc`                  | Scuola di Medicina e Chirurgia    |
+| Fisioterapia                                                               | `fisioterapia`                        | Scuola di Medicina e Chirurgia    |
+| Ostetricia                                                                 | `ostetricia`                          | Scuola di Medicina e Chirurgia    |
+| Logopedia                                                                  | `logopedia`                           | Scuola di Medicina e Chirurgia    |
+| Dietistica                                                                 | `dietistica`                          | Scuola di Medicina e Chirurgia    |
+| Tecniche di Radiologia Medica per Immagini e Radioterapia                  | `radiologia`                          | Scuola di Medicina e Chirurgia    |
+| Tecniche di Laboratorio Biomedico                                          | `laboratorio_biomedico`               | Scuola di Medicina e Chirurgia    |
+| Tecniche di Fisiopatologia Cardiocircolatoria e Perfusione Cardiovascolare | `fisiopatologia_cardio`               | Scuola di Medicina e Chirurgia    |
+| Igiene Dentale                                                             | `igiene_dentale`                      | Scuola di Medicina e Chirurgia    |
+| Tecniche della Prevenzione nell'Ambiente e nei Luoghi di Lavoro            | `prevenzione_ambiente_lavoro`         | Scuola di Medicina e Chirurgia    |
+| Scienze Motorie e Sportive                                                 | `scienze_motorie`                     | Scuola di Medicina e Chirurgia    |
+| Scienze e Tecniche di Psicologia Cognitiva                                 | `psicologia_cognitiva_l`              | Scuola di Medicina e Chirurgia    |
+| Ingegneria Informatica e Biomedica                                         | `ing_informatica_biomedica`           | Scuola di Medicina e Chirurgia    |
+| Scienze Infermieristiche e Ostetriche (LM)                                 | `scienze_infermieristiche_ostetriche` | Scuola di Medicina e Chirurgia    |
+| Scienze Riabilitative delle Professioni Sanitarie (LM)                     | `scienze_riabilitative`               | Scuola di Medicina e Chirurgia    |
+| Scienze delle Professioni Sanitarie Tecniche Diagnostiche (LM)             | `prof_sanitarie_diagnostiche`         | Scuola di Medicina e Chirurgia    |
+| Ingegneria Biomedica (LM)                                                  | `ing_biomedica`                       | Scuola di Medicina e Chirurgia    |
+| Medicina e Chirurgia                                                       | `medicina_chirurgia`                  | Scuola di Medicina e Chirurgia    |
+| Medicina e Chirurgia TD                                                    | `medicina_chirurgia_td`               | Scuola di Medicina e Chirurgia    |
+| Odontoiatria e Protesi Dentaria                                            | `odontoiatria`                        | Scuola di Medicina e Chirurgia    |
+| Psicologia Cognitiva e Neuroscienze (LM)                                   | `psicologia_cognitiva_neuroscienze`   | Scuola di Medicina e Chirurgia    |
+| Psicologia Forense e Criminologica (LM)                                    | `psicologia_forense`                  | Scuola di Medicina e Chirurgia    |
+| Scienze e Tecniche dello Sport (LM Interateneo)                            | `scienze_tecniche_sport`              | Scuola di Medicina e Chirurgia    |
+| Scienze della Formazione Primaria (Interateneo Unical)                     | `formazione_primaria`                 | Scuola di Medicina e Chirurgia    |
+| Biotecnologie                                                              | `biotecnologie`                       | Scuola di Farmacia e Nutraceutica |
+| Scienze e Tecnologie delle Produzioni Animali                              | `produzioni_animali`                  | Scuola di Farmacia e Nutraceutica |
+| Scienze Biologiche per l'Ambiente (Interateneo)                            | `biologiche_ambiente`                 | Scuola di Farmacia e Nutraceutica |
+| Scienze e Tecnologie Cosmetiche e dei Prodotti del Benessere               | `cosmetiche`                          | Scuola di Farmacia e Nutraceutica |
+| Farmacia                                                                   | `farmacia`                            | Scuola di Farmacia e Nutraceutica |
+| Biotecnologie Innovative per la Salute (LM)                                | `biotecnologie_salute`                | Scuola di Farmacia e Nutraceutica |
+| Scienze Chimiche e Cosmetiche (LM)                                         | `chimiche_cosmetiche`                 | Scuola di Farmacia e Nutraceutica |
+| Scienze delle Investigazioni                                               | `scienze_investigazioni`              | Dipartimento DiGES                |
+| Economia Aziendale                                                         | `economia_aziendale`                  | Dipartimento DiGES                |
+| Organizzazione delle Amministrazioni Pubbliche e Private                   | `oapp`                                | Dipartimento DiGES                |
+| Sociologia e Servizio Sociale                                              | `sociologia_servizio_sociale`         | Dipartimento DiGES                |
+| Sociologia                                                                 | `sociologia`                          | Dipartimento DiGES                |
+| Economia Aziendale e Management (LM)                                       | `economia_management`                 | Dipartimento DiGES                |
+| Amministrazioni Pubbliche e Società (LM)                                   | `amministrazioni_societa`             | Dipartimento DiGES                |
+| Giurisprudenza                                                             | `giurisprudenza`                      | Dipartimento DiGES                |
+| Economia, Data Analysis e Settore Pubblico (LM)                            | `economia_data_analysis`              | Dipartimento DiGES                |
+| Healthcare Management (LM)                                                 | `healthcare_management`               | Dipartimento DiGES                |
+
+</details>
+
+You do not need groups for the schools: a school's notices already reach all its courses. If you add or rename a course in `config/sources.json`, the group name must follow the new `name`.
 
 #### C.2 Link the bot
 
 1. On the phone open _WhatsApp Business → Linked devices → Link a device → Link with phone number instead_.
 2. Enter the `XXXX-XXXX` code shown in the logs.
 3. The logs show `whatsapp connected`. Press `Ctrl+C` to leave the logs: the service keeps running in the background.
+4. Within a few seconds the bot writes in your **"Message yourself"** chat the report _"🔗 Associazione automatica gruppi → corsi"_ with the courses it has linked to their groups.
 
-#### C.3 Link the groups to the courses
+#### C.3 Complete and check the links
 
-In the **"Message yourself"** chat, write one at a time:
+All the following commands are written in the **"Message yourself"** chat (see [WhatsApp commands](#whatsapp-commands) for a full explanation of each one).
 
-1. `!gruppi`: note the number of each group;
-2. `!target medicina`: find the course identifiers;
-3. `!associa 3 medicina_chirurgia`: repeat for every group and check the group name in the reply;
-4. `!associa 1 ateneo fondazione`: link the community announcement group to the university and Foundation notices;
-5. `!mappa` and `!test medicina_chirurgia`: check the links and the preview.
-
-You do not need to link the schools to the course groups: a school's notices already reach all its courses. Share the group invite links yourself: the bot does not do it, to reduce the risk of a ban.
+1. **Read the automatic report.** If it lists courses under _"Nessun gruppo con il nome del corso"_ (no group with the course name), create those groups or fix their names, then send `!autoassocia`. Repeat until the list is empty or contains only courses you do not want a group for.
+2. **Link the community announcement group** to university and Foundation notices:
+   - send `!gruppi` and find the line marked `(bacheca)`, e.g. `1. UMG automated news… (bacheca)`;
+   - send `!associa 1 ateneo fondazione` (using that number) and check the group name in the reply.
+3. **Check everything:** send `!mappa` (every course should show its group, with no ⚠️) and `!test giurisprudenza` to preview a message.
+4. **Share the group invite links** yourself: the bot never does it, to reduce the risk of a ban.
 
 #### C.4 Check from your PC
 

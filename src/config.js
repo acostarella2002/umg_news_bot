@@ -21,7 +21,7 @@ export const config = {
   slowMinDelayS: int('SLOW_MIN_DELAY_S', 120), // minimum pause when many notices are queued at once
   slowMaxDelayS: int('SLOW_MAX_DELAY_S', 180), // maximum pause when many notices are queued at once
   maxSendsPerHour: int('MAX_SENDS_PER_HOUR', 40), // hard cap to keep traffic human-like
-  keepaliveDays: int('KEEPALIVE_DAYS', 7), // weekly reminder to open the primary phone
+  keepaliveDays: int('KEEPALIVE_DAYS', 6), // reminder to open the primary phone (WhatsApp unlinks after ~14 days offline)
   logLevel: process.env.LOG_LEVEL || 'info', // pino log level
 };
 

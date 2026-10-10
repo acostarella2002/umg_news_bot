@@ -10,7 +10,7 @@ export async function keepaliveTick({ db, sock, days, now = Date.now() }) {
   const last = Date.parse(getKv(db, 'last_keepalive') ?? '') || 0; // 0 when never sent
   if (!sock?.user || now - last < days * 864e5) return false; // offline or not due yet
   const text = [
-    '🔔 *Promemoria settimanale UMG News Bot*', // header
+    '🔔 *Promemoria UMG News Bot*', // header (cadence set by KEEPALIVE_DAYS)
     'Apri WhatsApp Business sul telefono principale e lascialo connettere a internet per qualche minuto: serve a non far scollegare il bot (limite ~14 giorni).', // the actual reminder
     `Ultimo controllo bacheche: ${getKv(db, 'last_poll') ?? 'mai'}`, // health info
     `In coda: ${pendingDeliveries(db).length} · inviati ultima ora: ${sentLastHour(db)}`, // queue info
