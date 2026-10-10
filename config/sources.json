@@ -1,0 +1,221 @@
+{
+  "courses": [
+    { "id": "infermieristica", "name": "Infermieristica", "school": "medicina", "url": "https://medicina.unicz.it/corso_studio/infermieristica/avvisi" },
+    {
+      "id": "infermieristica_rc",
+      "name": "Infermieristica (Interateneo RC)",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/interateneo/avvisi"
+    },
+    { "id": "fisioterapia", "name": "Fisioterapia", "school": "medicina", "url": "https://medicina.unicz.it/corso_studio/fisioterapia/avvisi" },
+    { "id": "ostetricia", "name": "Ostetricia", "school": "medicina", "url": "https://medicina.unicz.it/corso_studio/ostetricia/avvisi" },
+    { "id": "logopedia", "name": "Logopedia", "school": "medicina", "url": "https://medicina.unicz.it/corso_studio/logopedia/avvisi" },
+    { "id": "dietistica", "name": "Dietistica", "school": "medicina", "url": "https://medicina.unicz.it/corso_studio/dietistica/avvisi" },
+    {
+      "id": "radiologia",
+      "name": "Tecniche di Radiologia Medica per Immagini e Radioterapia",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/radiologia_medica_radioterapia/avvisi"
+    },
+    {
+      "id": "laboratorio_biomedico",
+      "name": "Tecniche di Laboratorio Biomedico",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/tecniche_laboratorio_biomedico/avvisi"
+    },
+    {
+      "id": "fisiopatologia_cardio",
+      "name": "Tecniche di Fisiopatologia Cardiocircolatoria e Perfusione Cardiovascolare",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/tecnico_fisiopatologia_cardiocircolatoria/avvisi"
+    },
+    { "id": "igiene_dentale", "name": "Igiene Dentale", "school": "medicina", "url": "https://medicina.unicz.it/corso_studio/igiene_dentale/avvisi" },
+    {
+      "id": "prevenzione_ambiente_lavoro",
+      "name": "Tecniche della Prevenzione nell'Ambiente e nei Luoghi di Lavoro",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/tecniche_prevenzione_ambiente_lavoro/avvisi"
+    },
+    {
+      "id": "scienze_motorie",
+      "name": "Scienze Motorie e Sportive",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/scienze_motorie_sportive/avvisi"
+    },
+    {
+      "id": "psicologia_cognitiva_l",
+      "name": "Scienze e Tecniche di Psicologia Cognitiva",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/scienze_tecniche_psicologia_cognitiva/avvisi"
+    },
+    {
+      "id": "ing_informatica_biomedica",
+      "name": "Ingegneria Informatica e Biomedica",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/ingegneria_informatica_biomedica/avvisi"
+    },
+    {
+      "id": "scienze_infermieristiche_ostetriche",
+      "name": "Scienze Infermieristiche e Ostetriche (LM)",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/scienze_infermieristiche_ostetriche/avvisi"
+    },
+    {
+      "id": "scienze_riabilitative",
+      "name": "Scienze Riabilitative delle Professioni Sanitarie (LM)",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/scienze_riabilitative_prof_sanitarie/avvisi"
+    },
+    {
+      "id": "prof_sanitarie_diagnostiche",
+      "name": "Scienze delle Professioni Sanitarie Tecniche Diagnostiche (LM)",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/lm_scienze_prof_sanitarie_tecniche_diagnostiche/avvisi"
+    },
+    {
+      "id": "ing_biomedica",
+      "name": "Ingegneria Biomedica (LM)",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/ingegneria_biomedica/avvisi"
+    },
+    {
+      "id": "medicina_chirurgia",
+      "name": "Medicina e Chirurgia",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/medicina_chirurgia/avvisi"
+    },
+    {
+      "id": "medicina_chirurgia_td",
+      "name": "Medicina e Chirurgia TD",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/medicina_chirurgia_interateneo/avvisi"
+    },
+    {
+      "id": "odontoiatria",
+      "name": "Odontoiatria e Protesi Dentaria",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/odontoiatria_protesi_dentaria/avvisi"
+    },
+    {
+      "id": "psicologia_cognitiva_neuroscienze",
+      "name": "Psicologia Cognitiva e Neuroscienze (LM)",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/psicologia_cognitiva_neuroscienze/avvisi"
+    },
+    {
+      "id": "psicologia_forense",
+      "name": "Psicologia Forense e Criminologica (LM)",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/psicologia_forense_criminologia/avvisi"
+    },
+    {
+      "id": "scienze_tecniche_sport",
+      "name": "Scienze e Tecniche dello Sport (LM Interateneo)",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/scienze_tecniche_sport/avvisi"
+    },
+    {
+      "id": "formazione_primaria",
+      "name": "Scienze della Formazione Primaria (Interateneo Unical)",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/scienze_formazione_primaria/avvisi"
+    },
+    { "id": "biotecnologie", "name": "Biotecnologie", "school": "sfn", "url": "https://www.sfn.unicz.it/corso_studio/biotecnologie/avvisi" },
+    {
+      "id": "produzioni_animali",
+      "name": "Scienze e Tecnologie delle Produzioni Animali",
+      "school": "sfn",
+      "url": "https://www.sfn.unicz.it/corso_studio/stpa/avvisi"
+    },
+    {
+      "id": "biologiche_ambiente",
+      "name": "Scienze Biologiche per l'Ambiente (Interateneo)",
+      "school": "sfn",
+      "url": "https://www.sfn.unicz.it/corso_studio/scienze_biologiche_ambiente/avvisi"
+    },
+    {
+      "id": "cosmetiche",
+      "name": "Scienze e Tecnologie Cosmetiche e dei Prodotti del Benessere",
+      "school": "sfn",
+      "url": "https://www.sfn.unicz.it/corso_studio/scienze_tecnologie_cosmetiche/avvisi"
+    },
+    { "id": "farmacia", "name": "Farmacia", "school": "sfn", "url": "https://www.sfn.unicz.it/corso_studio/farmacia/avvisi" },
+    {
+      "id": "biotecnologie_salute",
+      "name": "Biotecnologie Innovative per la Salute (LM)",
+      "school": "sfn",
+      "url": "https://www.sfn.unicz.it/corso_studio/biotecnologie_innovative_salute/avvisi"
+    },
+    {
+      "id": "chimiche_cosmetiche",
+      "name": "Scienze Chimiche e Cosmetiche (LM)",
+      "school": "sfn",
+      "url": "https://www.sfn.unicz.it/corso_studio/scienze_chimiche_e_cosmetiche/avvisi"
+    },
+    {
+      "id": "scienze_investigazioni",
+      "name": "Scienze delle Investigazioni",
+      "school": "diges",
+      "url": "https://diges.unicz.it/corso_studio/scienze_investigazioni/avvisi"
+    },
+    { "id": "economia_aziendale", "name": "Economia Aziendale", "school": "diges", "url": "https://diges.unicz.it/corso_studio/economia_aziendale/avvisi" },
+    {
+      "id": "oapp",
+      "name": "Organizzazione delle Amministrazioni Pubbliche e Private",
+      "school": "diges",
+      "url": "https://diges.unicz.it/corso_studio/oapp/avvisi"
+    },
+    {
+      "id": "sociologia_servizio_sociale",
+      "name": "Sociologia e Servizio Sociale",
+      "school": "diges",
+      "url": "https://diges.unicz.it/corso_studio/Sociologia_e_Servizio_Sociale/avvisi"
+    },
+    { "id": "sociologia", "name": "Sociologia", "school": "diges", "url": "https://diges.unicz.it/corso_studio/sociologia/avvisi" },
+    {
+      "id": "economia_management",
+      "name": "Economia Aziendale e Management (LM)",
+      "school": "diges",
+      "url": "https://diges.unicz.it/corso_studio/economia_aziendale_management/avvisi"
+    },
+    {
+      "id": "amministrazioni_societa",
+      "name": "Amministrazioni Pubbliche e Società (LM)",
+      "school": "diges",
+      "url": "https://diges.unicz.it/corso_studio/lm_amm_pubbliche_societa/avvisi"
+    },
+    { "id": "giurisprudenza", "name": "Giurisprudenza", "school": "diges", "url": "https://diges.unicz.it/corso_studio/giurisprudenza/avvisi" },
+    {
+      "id": "economia_data_analysis",
+      "name": "Economia, Data Analysis e Settore Pubblico (LM)",
+      "school": "diges",
+      "url": "https://diges.unicz.it/corso_studio/economia_data_analysis_e_settore_pubblico/avvisi"
+    },
+    {
+      "id": "healthcare_management",
+      "name": "Healthcare Management (LM)",
+      "school": "diges",
+      "url": "https://diges.unicz.it/corso_studio/healthcare_management/avvisi"
+    }
+  ],
+  "schools": [
+    { "id": "medicina", "name": "Scuola di Medicina e Chirurgia", "url": "https://medicina.unicz.it/avvisi" },
+    { "id": "sfn", "name": "Scuola di Farmacia e Nutraceutica", "url": "https://www.sfn.unicz.it/avvisi" },
+    { "id": "diges", "name": "Dipartimento DiGES", "url": "https://diges.unicz.it/avvisi" }
+  ],
+  "feeds": [
+    { "id": "ateneo", "name": "Ateneo UMG - Bacheca Studenti", "url": "https://web.unicz.it/it/category/bacheca-studenti/10/rss" },
+    { "id": "ateneo", "name": "Ateneo UMG - Segreteria Studenti", "url": "https://web.unicz.it/it/category/segreteria-studenti/10/rss" },
+    { "id": "ateneo", "name": "Ateneo UMG - Avvisi Generali", "url": "https://web.unicz.it/it/category/avvisi-generali/10/rss" },
+    {
+      "id": "fondazione",
+      "name": "Fondazione UMG - Bandi",
+      "url": "https://www.fondazioneumg.it/servizi/feed/ExpRSS_servizio.aspx?tabellaservizio=T_bandi%7ccampo=bandi_categoria%7ctitle=Fondazione+Universit%c3%a0+Magna+Graecia+-+Bandi%7cfiltrocampi="
+    },
+    {
+      "id": "fondazione",
+      "name": "Fondazione UMG - Notizie",
+      "url": "https://www.fondazioneumg.it/servizi/feed/ExpRSS_servizio.aspx?tabellaservizio=T_notizie%7ccampo=Categoria_Notizie%7ctitle=Fondazione+Universit%c3%a0+Magna+Graecia+-+Notizie%7cfiltrocampi="
+    }
+  ]
+}

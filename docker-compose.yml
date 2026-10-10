@@ -1,0 +1,21 @@
+# One service: RSS server + poller + WhatsApp bot.
+services:
+  bot:
+    build: . # image from the local Dockerfile
+    restart: unless-stopped # survive crashes and reboots
+    env_file: .env # configuration (see .env.example)
+    ports:
+      - '8080:8080' # RSS feeds
+    volumes:
+      - ./data:/data # DB + WhatsApp session persist across updates
+    read_only: true # container filesystem is immutable...
+    tmpfs:
+      - /tmp # ...except a scratch tmp
+    security_opt:
+      - no-new-privileges:true # block privilege escalation
+    cap_drop:
+      - ALL # no Linux capabilities needed
+    mem_limit: 512m # fits the Oracle free VM comfortably
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' } # bounded log size

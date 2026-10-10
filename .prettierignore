@@ -1,0 +1,7 @@
+.tools
+data
+node_modules
+test/fixtures
+package-lock.json
+.claude
+brain
