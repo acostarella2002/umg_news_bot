@@ -340,15 +340,29 @@ This guide takes the project from scratch to a service running 24/7 on a free Or
 
 #### A.1 Set up Node.js
 
-The project needs Node.js 22.13 or later. A portable Node is already included in `.tools\node`: to use it, open PowerShell in the project folder and add it to the `PATH` of the current session.
+The project needs **Node.js 22** (22.13 or later), the same major version used inside the Docker image. Node is needed only on your PC: on the server it is already inside the container, so you never install it there.
+
+Install it once, system-wide. The following command works in any PowerShell, even where `winget` is missing: it downloads the latest Node 22 installer from nodejs.org and runs it. Accept the administrator prompt that appears.
 
 ```powershell
-cd $HOME\Desktop\umg-news-bot
-$env:Path = "$PWD\.tools\node;$env:Path"
+$release = (Invoke-RestMethod 'https://nodejs.org/dist/index.json') | Where-Object { $_.version -like 'v22.*' } | Select-Object -First 1
+$msi = Join-Path $env:TEMP "node-$($release.version)-x64.msi"
+Invoke-WebRequest "https://nodejs.org/dist/$($release.version)/node-$($release.version)-x64.msi" -OutFile $msi
+Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /passive /norestart" -Wait -Verb RunAs
+```
+
+Then **close and reopen** the terminal (in VS Code, close every terminal tab or restart VS Code) and check:
+
+```powershell
 node --version
 ```
 
-Alternatively, install Node.js permanently with `winget install OpenJS.NodeJS.LTS` and reopen the terminal.
+It must print `v22.` followed by any numbers. From now on `node` and `npm` work in every terminal.
+
+> [!TIP]
+> The parentheses around `Invoke-RestMethod` are required: without them, Windows PowerShell 5.1 does not split the release list and the download fails with _File not found_. You can also download the _Windows Installer (.msi)_ of Node 22 manually from [nodejs.org/en/download](https://nodejs.org/en/download).
+
+**Without administrator rights.** The project folder also contains a portable Node 22 in `.tools\node`. You can use it instead of installing, but you must add it to the `PATH` every time you open a new terminal: `$env:Path = "$PWD\.tools\node;$env:Path"`.
 
 #### A.2 Install and verify
 
