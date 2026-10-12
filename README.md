@@ -18,23 +18,25 @@ A project by **Primavera Studentesca UMG**.
 6. [WhatsApp commands](#whatsapp-commands)
 7. [RSS feeds and monitoring](#rss-feeds-and-monitoring)
 8. [Development](#development)
-9. [Step-by-step guide from Windows](#step-by-step-guide-from-windows)
+9. [Operating the server](#operating-the-server)
+10. [WhatsApp setup (once)](#whatsapp-setup-once)
+11. [Server setup history](#server-setup-history)
 
 ---
 
 ## Features
 
-- **Automatic board reading.** Every 15 minutes the bot reads the notice page of each degree course:
+- **Automatic board reading.** Every 10 minutes the bot reads the notice page of each degree course:
   - `medicina.unicz.it/corso_studio/*/avvisi`
   - `sfn.unicz.it/corso_studio/*/avvisi`
   - `diges.unicz.it/corso_studio/*/avvisi`
 
   It also reads the notices of the three schools, the university RSS feeds (`web.unicz.it`) and those of the UMG Foundation (calls and news).
 
-- **RSS feeds.** The bot publishes one feed per course, per school, for the university and for the Foundation, plus an aggregated feed with every notice.
-- **WhatsApp notifications.** Every **new** notice is sent to the group linked to its course. The message contains the title, the date, an excerpt of the text, the attachments and a link to the original notice.
-- **School notices.** A notice published by a school automatically reaches every course of that school.
-- **Managed from the phone.** Groups are linked to courses with simple commands written in the bot account's _"Message yourself"_ chat.
+- **RSS feeds.** One feed per course, per school, for the university and for the Foundation, plus an aggregated feed with every notice.
+- **WhatsApp notifications.** Every **new** notice is sent to the group of its course, with title, date, an excerpt, the attachments and a link to the original.
+- **School notices.** A notice published by a school reaches every course of that school.
+- **Managed from the phone.** Groups are linked to courses automatically, and everything else is controlled with simple commands in the bot account's _"Message yourself"_ chat.
 
 ## How it works
 
@@ -42,7 +44,7 @@ The service is a single Node.js process running four independent activities, whi
 
 | Activity       | What it does                                                                            |
 | -------------- | --------------------------------------------------------------------------------------- |
-| **Poller**     | Every 15 minutes downloads the boards, detects new notices and fetches their full text. |
+| **Poller**     | Every 10 minutes downloads the boards, detects new notices and fetches their full text. |
 | **RSS server** | Serves the feeds and the service status on port 8080, read-only.                        |
 | **Sender**     | Empties the WhatsApp message queue at a slow, human-like pace.                          |
 | **Commands**   | Runs the commands the owner writes in the "Message yourself" chat.                      |
@@ -50,65 +52,62 @@ The service is a single Node.js process running four independent activities, whi
 Two rules protect the groups from unwanted messages:
 
 - **Silent first read.** The first time the bot reads a board, it stores every existing notice **without sending it**. From then on, only genuinely new notices are sent.
-- **No retroactive sending.** When you link a group, it only receives notices published from that moment on. After a service interruption, only notices from the last 3 days are sent.
+- **No retroactive sending.** A newly linked group only receives notices published from that moment on. After an interruption, only notices from the last 3 days are sent.
 
 ## Privacy and security
 
 The bot is designed to know nothing about the people who read the groups.
 
 - **No personal data.** The bot neither reads nor stores messages, phone numbers or names. It only processes the messages the owner writes in the "Message yourself" chat; everything else is discarded unread.
-- **Minimal database.** It contains only public notices and group identifiers. There is no table for people.
-- **Clean logs.** A filter masks WhatsApp identifiers and phone numbers before anything is written to the logs.
-- **SSRF protection.** The bot downloads pages only from `*.unicz.it` and `*.fondazioneumg.it`, even after redirects. A malicious link inside a notice cannot make it contact other sites.
+- **Minimal database.** Only public notices and group identifiers. There is no table for people.
+- **Clean logs.** WhatsApp identifiers and phone numbers are masked before anything is logged.
+- **SSRF protection.** Pages are downloaded only from `*.unicz.it` and `*.fondazioneumg.it`, even after redirects.
 - **Read-only server.** The web server accepts no writes and sends security headers on every response.
-- **Isolated container.** The container runs as an unprivileged user, with a read-only filesystem and no Linux capabilities.
+- **Isolated container.** Unprivileged user, read-only filesystem, no Linux capabilities.
 
 These guarantees are checked automatically by the tests in `test/security.test.js`.
 
 ## Reducing the risk of a ban
 
-The bot speaks the WhatsApp Web protocol through the Baileys library, which is not an official API. For this reason it behaves as cautiously as possible.
+The bot speaks the WhatsApp Web protocol through the Baileys library, which is not an official API, so it behaves as cautiously as possible.
 
 - **Groups only.** It uses the association's WhatsApp Business account as a "linked device" and writes only to groups. It never creates groups, sends invites or writes to individual people.
-- **Human pace.** It waits a random 8–20 seconds between two messages and shows "typing…" before each one. When many notices arrive at once, it slows down to one message every 2–3 minutes.
-- **Hourly cap.** It never sends more than 40 messages per hour and does not appear permanently "online".
-- **Error handling.** A message that fails is retried after 5 and then 15 minutes, without blocking the other groups.
-- **No floods.** The silent first read, the 3-day window and a publication-date check prevent mass sending, even when a website changes its structure.
+- **Human pace.** A random 8–20 seconds between two messages, with "typing…" before each one; one message every 2–3 minutes when many notices arrive at once.
+- **Hourly cap.** At most 40 messages per hour; the bot does not appear permanently "online".
+- **Error handling.** A failed message is retried after 5 and then 15 minutes, without blocking the other groups.
+- **No floods.** The silent first read, the 3-day window and a publication-date check prevent mass sending.
 
 ## Configuration
 
 ### Environment variables
 
-The configuration lives in the `.env` file, created on the server by copying `.env.example` (`cp .env.example .env`). The values in `.env.example` are the recommended ones and already include the bot's WhatsApp Business number, so on the server you normally only need to change `BASE_URL`.
+The configuration lives in the server's `.env` file, created by copying `.env.example`, which contains the recommended values. The bot's phone number goes only in the server's `.env`: the repository keeps a placeholder.
 
-> [!CAUTION]
-> `.env.example` contains the bot's real phone number. Do not publish it in a public repository: a public number attracts spam and increases the risk of a ban. If you publish the code, replace it with a placeholder and keep the real number only in the server's `.env`.
-
-| Variable             | Default                 | Description                                                                                                                                                                      |
-| -------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BASE_URL`           | `http://localhost:8080` | Public address of the server, used in feed links (e.g. `http://<server-IP>:8080`).                                                                                               |
-| `PORT`               | `8080`                  | HTTP port inside the container.                                                                                                                                                  |
-| `POLL_MINUTES`       | `15`                    | Minutes between two board checks.                                                                                                                                                |
-| `WA_ENABLED`         | `true`                  | Set to `false` to run the RSS feeds only, without WhatsApp.                                                                                                                      |
-| `WA_PAIRING_NUMBER`  | already set             | Phone number of the **bot's** WhatsApp Business account, international format, digits only (country code `39` without `+`). Used only to obtain the pairing code the first time. |
-| `SEND_MIN_DELAY_S`   | `8`                     | Minimum pause between two messages, in seconds.                                                                                                                                  |
-| `SEND_MAX_DELAY_S`   | `20`                    | Maximum pause between two messages, in seconds.                                                                                                                                  |
-| `SLOW_MIN_DELAY_S`   | `120`                   | Minimum pause when more than 10 messages are queued.                                                                                                                             |
-| `SLOW_MAX_DELAY_S`   | `180`                   | Maximum pause when more than 10 messages are queued.                                                                                                                             |
-| `MAX_SENDS_PER_HOUR` | `40`                    | Maximum number of messages per hour.                                                                                                                                             |
-| `KEEPALIVE_DAYS`     | `6`                     | Days between two reminders in the "Message yourself" chat. Keep it well below 14 (see [Reminder](#reminder-to-open-the-phone)).                                                  |
-| `LOG_LEVEL`          | `info`                  | Log detail: `fatal`, `error`, `warn`, `info`, `debug`.                                                                                                                           |
+| Variable             | Value in `.env.example` | Description                                                                                                  |
+| -------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `BASE_URL`           | `http://localhost:8080` | Public address of the server, used in feed links. On the server: `http://<server-IP>:8080`.                  |
+| `PORT`               | `8080`                  | HTTP port inside the container.                                                                              |
+| `POLL_MINUTES`       | `10`                    | Minutes between two board checks.                                                                            |
+| `WA_ENABLED`         | `false`                 | `false` runs the RSS feeds only (for tests on the PC). On the server: `true`.                                |
+| `WA_PAIRING_NUMBER`  | `39xxxxxxxxxx`          | Number of the bot's WhatsApp Business account, digits only with country code (`39…`). Used only for pairing. |
+| `SEND_MIN_DELAY_S`   | `8`                     | Minimum pause between two messages, in seconds.                                                              |
+| `SEND_MAX_DELAY_S`   | `20`                    | Maximum pause between two messages, in seconds.                                                              |
+| `SLOW_MIN_DELAY_S`   | `120`                   | Minimum pause when more than 10 messages are queued.                                                         |
+| `SLOW_MAX_DELAY_S`   | `180`                   | Maximum pause when more than 10 messages are queued.                                                         |
+| `MAX_SENDS_PER_HOUR` | `40`                    | Maximum number of messages per hour.                                                                         |
+| `KEEPALIVE_DAYS`     | `6`                     | Days between two reminders to open the phone (see [Reminder](#reminder-to-open-the-phone)).                  |
+| `LOG_LEVEL`          | `info`                  | Log detail: `fatal`, `error`, `warn`, `info`, `debug`.                                                       |
 
 ### Notice boards
 
-The list of boards is in `config/sources.json`. To add a course, add an entry to the `courses` section with these fields:
+The boards are listed in `config/sources.json`. To add a course, add an entry to `courses`:
 
-- `id`: short identifier, **lowercase letters, digits and underscores only** (e.g. `ingegneria_biomedica`). Do not change it once in production: group links depend on it.
-- `name`: human-readable name, shown in messages and feeds.
+- `id`: short identifier, **lowercase letters, digits and underscores only** (e.g. `ingegneria_biomedica`). Never change it once in production.
+- `name`: readable name, shown in messages and feeds. It is also the **exact name of the course's WhatsApp group**.
 - `school`: `medicina`, `sfn` or `diges`. Determines which school notices the course receives.
 - `url`: address of the course's notice page.
 
-After the change, check that the new board is read correctly with `npm run check:sources`.
+Then check the new board with `npm run check:sources`.
 
 ## WhatsApp commands
 
@@ -169,7 +168,7 @@ Invii: ▶️ attivi
 
 How to read it:
 
-- **Ultimo controllo** (last check): when the boards were last read, in UTC time (Italian time minus 1 or 2 hours). It should never be older than about 15 minutes.
+- **Ultimo controllo** (last check): when the boards were last read, in UTC time (Italian time minus 1 or 2 hours). It should never be older than about 10 minutes.
 - **In coda** (queued): messages waiting to be sent. A few dozen right after many notices is normal: the bot sends them slowly on purpose.
 - **Inviati ultima ora** (sent in the last hour): never above 40.
 - **Falliti ultime 24h** (failed in the last 24 hours): should be `0`. If not, a group is not receiving: usually the bot is not an admin of a group where only admins can write, or it was removed from a group. Check with `!mappa`.
@@ -178,7 +177,7 @@ How to read it:
 
 #### `!autoassocia` — link the courses automatically
 
-Links every course of `config/sources.json` to the WhatsApp group whose name is **exactly the course name** (upper/lower case, accents, apostrophe style and extra spaces do not matter). This is the recommended way to do the first setup: it avoids linking a group to the wrong course. The exact names are listed in [step C.1](#c1-prepare-the-community-once).
+Links every course of `config/sources.json` to the WhatsApp group whose name is **exactly the course name** (upper/lower case, accents, apostrophe style and extra spaces do not matter). This is the recommended way to do the first setup: it avoids linking a group to the wrong course. The exact names are listed in [step C.1](#prepare-the-community).
 
 ```
 🔗 *Associazione automatica gruppi → corsi*
@@ -295,12 +294,10 @@ Every 6 days (`KEEPALIVE_DAYS`) the bot writes a reminder with a short status in
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | `dataWritable: false`    | The `data/` folder is not writable. Check its permissions and owner.                                              |
 | `pollsRunning: false`    | The boards have not been checked for at least three cycles. Check the free disk space.                            |
-| `whatsapp: "logged_out"` | WhatsApp has unlinked the bot. Link it again (see [D.3](#d3-relink-whatsapp)).                                    |
+| `whatsapp: "logged_out"` | WhatsApp has unlinked the bot. Link it again (see [Relink WhatsApp](#relink-whatsapp)).                           |
 | `whatsapp: "replaced"`   | Another copy of the bot is using the same session. Shut it down: the bot reconnects on its own within 15 minutes. |
 
 ## Development
-
-### Main commands
 
 | Command                 | Description                                                             |
 | ----------------------- | ----------------------------------------------------------------------- |
@@ -312,8 +309,6 @@ Every 6 days (`KEEPALIVE_DAYS`) the bot writes a reminder with a short status in
 | `npm run poll:once`     | Runs one real cycle on an in-memory database, without sending messages. |
 | `npm start`             | Starts the full service.                                                |
 
-### Project structure
-
 ```
 src/            application code (poller, parsers, database, server, WhatsApp)
 config/         sources.json, the list of notice boards
@@ -323,193 +318,106 @@ brain/          full technical documentation (Obsidian vault, in Italian)
 data/           database and WhatsApp session, created at startup (not versioned)
 ```
 
-### Technical documentation
-
-The `brain/` folder is an [Obsidian](https://obsidian.md) vault (in Italian) that describes in detail the architecture, the notice flow, the database schema, the privacy and anti-ban invariants, the coding conventions and the procedures for changing the code. Before modifying the code, start from `brain/00 - Indice.md`.
+The `brain/` folder is an [Obsidian](https://obsidian.md) vault (in Italian) describing architecture, notice flow, database, privacy and anti-ban rules, coding conventions and how to change the code. Start from `brain/00 - Indice.md`.
 
 ---
 
-## Step-by-step guide from Windows
+## Operating the server
 
-This guide takes the project from scratch to a service running 24/7 on a free Oracle Cloud server, using only the Windows terminal (**PowerShell**). From step B.4 onwards, some commands run **on the server** after you connect over SSH: they are shown in `bash` blocks.
+The bot runs on an Oracle Cloud **Always Free** virtual machine (`VM.Standard.E2.1.Micro`, Ubuntu 24.04) at **`<server-IP>`**, user `ubuntu`. All the commands below are run in **PowerShell on your PC**; they reach the server over SSH. How the server was built is recorded in [Server setup history](#server-setup-history).
 
 > [!IMPORTANT]
-> The bot must run in **one place at a time**. If you start it on your PC with WhatsApp enabled while it is also running on the server, the groups will receive duplicate messages. For local tests always use `WA_ENABLED=false`.
+> WhatsApp must be active in **one place only**: the server. On the PC always run with `WA_ENABLED=false`, otherwise the groups receive duplicate messages.
 
-### Part A — Local test
+### Your PC (once)
 
-#### A.1 Set up Node.js
+1. **Node.js 22** (only needed to run tests and develop). Run once, accept the administrator prompt, then restart the terminal:
 
-The project needs **Node.js 22** (22.13 or later), the same major version used inside the Docker image. Node is needed only on your PC: on the server it is already inside the container, so you never install it there.
+   ```powershell
+   $release = (Invoke-RestMethod 'https://nodejs.org/dist/index.json') | Where-Object { $_.version -like 'v22.*' } | Select-Object -First 1
+   $msi = Join-Path $env:TEMP "node-$($release.version)-x64.msi"
+   Invoke-WebRequest "https://nodejs.org/dist/$($release.version)/node-$($release.version)-x64.msi" -OutFile $msi
+   Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /passive /norestart" -Wait -Verb RunAs
+   ```
 
-Install it once, system-wide. The following command works in any PowerShell, even where `winget` is missing: it downloads the latest Node 22 installer from nodejs.org and runs it. Accept the administrator prompt that appears.
+2. **SSH key.** The private key `oracle_umg` must be in `$HOME\.ssh\`. On another PC, copy it there from a safe place; never share it.
+3. **Session variables.** At the start of every PowerShell session, set:
 
-```powershell
-$release = (Invoke-RestMethod 'https://nodejs.org/dist/index.json') | Where-Object { $_.version -like 'v22.*' } | Select-Object -First 1
-$msi = Join-Path $env:TEMP "node-$($release.version)-x64.msi"
-Invoke-WebRequest "https://nodejs.org/dist/$($release.version)/node-$($release.version)-x64.msi" -OutFile $msi
-Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /passive /norestart" -Wait -Verb RunAs
-```
+   ```powershell
+   $IP = '<server-IP>'
+   $KEY = "$HOME\.ssh\oracle_umg"
+   cd $HOME\Desktop\umg-news-bot
+   ```
 
-Then **close and reopen** the terminal (in VS Code, close every terminal tab or restart VS Code) and check:
-
-```powershell
-node --version
-```
-
-It must print `v22.` followed by any numbers. From now on `node` and `npm` work in every terminal.
-
-> [!TIP]
-> The parentheses around `Invoke-RestMethod` are required: without them, Windows PowerShell 5.1 does not split the release list and the download fails with _File not found_. You can also download the _Windows Installer (.msi)_ of Node 22 manually from [nodejs.org/en/download](https://nodejs.org/en/download).
-
-**Without administrator rights.** The project folder also contains a portable Node 22 in `.tools\node`. You can use it instead of installing, but you must add it to the `PATH` every time you open a new terminal: `$env:Path = "$PWD\.tools\node;$env:Path"`.
-
-#### A.2 Install and verify
+### Deploy a change
 
 ```powershell
-npm ci
 npm test
-npm run check:sources
+.\scripts\deploy.ps1
 ```
 
-`npm test` must end with `fail 0`; `check:sources` must show a number of notices for every board, with no `ERROR` or `EMPTY` lines.
+`deploy.ps1` packs the project, uploads it, rebuilds the container and restarts the bot, then prints the container status. The server's `.env` and `data/` (notices, group links, WhatsApp session) are never touched. On the Micro machine the rebuild takes a few minutes.
 
-#### A.3 Start the RSS feeds only
+### Everyday commands
+
+| Task                        | Command                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| Check that everything works | `curl.exe "http://${IP}:8080/health"`                                          |
+| Open a shell on the server  | `ssh -i $KEY ubuntu@$IP`                                                       |
+| Container status            | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose ps"`                |
+| Last 100 log lines          | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose logs --tail 100"`   |
+| Follow the logs live        | `ssh -t -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose logs -f"`        |
+| Restart the bot             | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose restart"`           |
+| Stop / start the bot        | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose stop"` (or `start`) |
+| Stop only WhatsApp messages | write `!pausa` in the "Message yourself" chat (`!riprendi` to resume)          |
+
+Press `Ctrl+C` to leave the live logs; the bot keeps running.
+
+### Change the configuration
 
 ```powershell
-$env:WA_ENABLED = "false"
-npm start
+ssh -t -i $KEY ubuntu@$IP "cd umg-news-bot && nano .env && docker compose up -d"
 ```
 
-Open `http://localhost:8080/feeds` in the browser to see the list of feeds, and `http://localhost:8080/health` for the status. Press `Ctrl+C` to stop the service, then close the terminal (or run `Remove-Item Env:WA_ENABLED`) to clear the setting.
+Edit the values (see [Environment variables](#environment-variables)), save with `Ctrl+O`, `Enter`, exit with `Ctrl+X`: the bot restarts with the new settings.
 
-#### A.4 (Optional) Test with Docker Desktop
-
-If you have installed [Docker Desktop](https://www.docker.com/products/docker-desktop/), you can test the container exactly as it will run on the server:
+### Backup
 
 ```powershell
-Copy-Item .env.example .env
-notepad .env
+ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose stop && sudo tar -czf ~/backup-data.tgz data && sudo chown ubuntu ~/backup-data.tgz && docker compose start"
+scp -i $KEY "ubuntu@${IP}:~/backup-data.tgz" .
 ```
 
-In the file set `WA_ENABLED=false`, save and close. Then:
+The bot stops for a few seconds so that the database is copied consistently. The backup contains the WhatsApp session: keep it private and never start it on the PC.
+
+### Relink WhatsApp
+
+If `/health` reports `"whatsapp":"logged_out"`, WhatsApp has unlinked the bot:
 
 ```powershell
-docker compose up -d --build
-docker compose ps
-curl.exe http://localhost:8080/health
-docker compose down
+ssh -t -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose down && sudo rm -rf data/wa-auth && docker compose up -d && docker compose logs -f"
 ```
 
-Before moving on, delete the `data` folder created by the test (`Remove-Item -Recurse -Force data`), so the server starts with a clean database.
+When `PAIRING CODE: XXXX-XXXX` appears, enter it on the phone as in [Link the bot](#link-the-bot). Group links are kept.
 
-### Part B — Free server on Oracle Cloud
+### Periodic checks
 
-#### B.1 Create an SSH key
+- Open WhatsApp Business on the primary phone when the bot's reminder arrives (every 6 days).
+- Check `/health` from time to time; `"ok":true` means everything works.
+- At the start of each academic year run `npm run check:sources` to spot moved boards or new courses.
 
-The SSH key lets you connect to the server securely, without a password. Windows 10 and 11 already include the OpenSSH client.
+---
 
-```powershell
-ssh-keygen -t ed25519 -f $HOME\.ssh\oracle_umg
-Get-Content $HOME\.ssh\oracle_umg.pub | Set-Clipboard
-```
+## WhatsApp setup (once)
 
-The second command copies the **public** key to the clipboard: you will need it in the next step. Never share the file without the `.pub` extension: it is the private key.
+### Prepare the community
 
-#### B.2 Create the account and the virtual machine
-
-1. Sign up at [cloud.oracle.com](https://cloud.oracle.com) choosing the **Always Free** plan. A card is required to verify your identity, but Always Free resources are never charged.
-2. Open **Compute → Instances → Create instance** and set:
-   - **Image**: Canonical Ubuntu 24.04;
-   - **Shape**: `VM.Standard.A1.Flex` (Ampere ARM) with 1 OCPU and 6 GB of memory;
-   - **Add SSH keys → Paste public keys**: paste the key copied in step B.1.
-3. Click **Create** and wait for the state to become _Running_. Write down the **Public IP address** shown on the instance page.
-
-> [!NOTE]
-> If you get an _Out of capacity_ error, the free ARM machines are temporarily sold out in your zone: try again later or pick another _Availability Domain_.
-
-> [!WARNING]
-> Oracle may reclaim Always Free instances that stay underused for a week, and this bot uses very few resources. To prevent it, upgrade the account to **Pay As You Go** (_Billing → Upgrade_): Always Free resources remain free.
-
-#### B.3 Open the feed port
-
-To make the RSS feeds reachable from the Internet, open port 8080:
-
-1. From the instance page open the **Subnet** → default **Security List** → **Add Ingress Rules**.
-2. Set **Source CIDR** `0.0.0.0/0`, **IP Protocol** `TCP`, **Destination Port Range** `8080` and save.
-
-#### B.4 Connect to the server and install Docker
-
-From PowerShell, replacing `<IP>` with the address noted in step B.2:
-
-```powershell
-ssh -i $HOME\.ssh\oracle_umg ubuntu@<IP>
-```
-
-On the first connection confirm with `yes`. You are now on the server: run the following commands.
-
-```bash
-sudo apt update && sudo apt install -y docker.io docker-compose-v2
-sudo usermod -aG docker $USER
-sudo iptables -I INPUT 6 -p tcp --dport 8080 -j ACCEPT
-sudo netfilter-persistent save
-exit
-```
-
-The `iptables` command also opens the port in Ubuntu's internal firewall, which is enabled on Oracle images. `exit` closes the session: when you reconnect, your user will be able to run Docker without `sudo`.
-
-#### B.5 Copy the project to the server
-
-Go back to PowerShell **on your PC**, in the project folder. Create an archive without the folders the server does not need, and upload it:
-
-```powershell
-cd $HOME\Desktop\umg-news-bot
-tar -czf ..\umg-news-bot.tgz --exclude=node_modules --exclude=.tools --exclude=data --exclude=.env --exclude=brain .
-scp -i $HOME\.ssh\oracle_umg ..\umg-news-bot.tgz ubuntu@<IP>:~/
-ssh -i $HOME\.ssh\oracle_umg ubuntu@<IP>
-```
-
-On the server, extract the archive:
-
-```bash
-mkdir -p ~/umg-news-bot && tar -xzf ~/umg-news-bot.tgz -C ~/umg-news-bot && rm ~/umg-news-bot.tgz
-cd ~/umg-news-bot
-```
-
-#### B.6 Configure and start
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-The file already contains the recommended values and the bot's number. In the editor:
-
-- set `BASE_URL` to `http://<IP>:8080` (the feed links depend on it);
-- check that `WA_ENABLED=true` and that `WA_PAIRING_NUMBER` is the number of the bot's WhatsApp Business account.
-
-Save with `Ctrl+O`, `Enter`, and exit with `Ctrl+X`. Then prepare the data folder (it must belong to the container user, UID 1000) and start the service:
-
-```bash
-mkdir -p data && sudo chown 1000:1000 data && chmod 700 data
-docker compose up -d --build
-docker compose logs -f
-```
-
-The first build takes a few minutes. Wait for the `PAIRING CODE: XXXX-XXXX` line in the logs and move on to part C without closing the logs.
-
-### Part C — Link WhatsApp and the groups
-
-#### C.1 Prepare the community (once)
-
-From the phone with the **bot's WhatsApp Business account**:
+From the phone with the **bot's WhatsApp Business account**, preferably before linking the bot:
 
 1. create the _"UMG automated news by Primavera Studentesca UMG"_ community;
-2. inside the community, create one group per course, naming each group **exactly like the course** in the table below (upper/lower case, accents and apostrophe style do not matter; every other character does, including the text in brackets);
+2. inside it, create one group per course, named **exactly like the course** in the table below (upper/lower case, accents and apostrophe style do not matter);
 3. in every group set _Group settings → Send messages → Only admins_;
-4. make the association's administrators admins of the community: they will post manually in the community announcement group.
-
-Since the groups are created from the bot's account, the bot is automatically an admin and can write in them. Creating the groups **before** step C.2 lets the bot link them all by itself as soon as it connects.
+4. make the association's administrators admins of the community.
 
 <details>
 <summary><strong>Exact group names (generated from <code>config/sources.json</code>)</strong></summary>
@@ -561,86 +469,59 @@ Since the groups are created from the bot's account, the bot is automatically an
 
 </details>
 
-You do not need groups for the schools: a school's notices already reach all its courses. If you add or rename a course in `config/sources.json`, the group name must follow the new `name`.
+No groups are needed for the schools: their notices already reach all their courses.
 
-#### C.2 Link the bot
+### Link the bot
 
-1. On the phone open _WhatsApp Business → Linked devices → Link a device → Link with phone number instead_.
-2. Enter the `XXXX-XXXX` code shown in the logs.
-3. The logs show `whatsapp connected`. Press `Ctrl+C` to leave the logs: the service keeps running in the background.
-4. Within a few seconds the bot writes in your **"Message yourself"** chat the report _"🔗 Associazione automatica gruppi → corsi"_ with the courses it has linked to their groups.
+1. Follow the logs (`ssh -t -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose logs -f"`) and wait for `PAIRING CODE: XXXX-XXXX`.
+2. On the phone: _WhatsApp Business → Linked devices → Link a device → Link with phone number instead_, and enter the code.
+3. The logs show `whatsapp connected`. In the **"Message yourself"** chat the bot sends the report _"🔗 Associazione automatica gruppi → corsi"_ with the courses linked to their groups.
 
-#### C.3 Complete and check the links
+### Complete the links
 
-All the following commands are written in the **"Message yourself"** chat (see [WhatsApp commands](#whatsapp-commands) for a full explanation of each one).
+In the **"Message yourself"** chat (see [WhatsApp commands](#whatsapp-commands)):
 
-1. **Read the automatic report.** If it lists courses under _"Nessun gruppo con il nome del corso"_ (no group with the course name), create those groups or fix their names, then send `!autoassocia`. Repeat until the list is empty or contains only courses you do not want a group for.
-2. **Link the community announcement group** to university and Foundation notices:
-   - send `!gruppi` and find the line marked `(bacheca)`, e.g. `1. UMG automated news… (bacheca)`;
-   - send `!associa 1 ateneo fondazione` (using that number) and check the group name in the reply.
-3. **Check everything:** send `!mappa` (every course should show its group, with no ⚠️) and `!test giurisprudenza` to preview a message.
-4. **Share the group invite links** yourself: the bot never does it, to reduce the risk of a ban.
+1. if the report lists courses _without a group_, create or rename those groups and send `!autoassocia`;
+2. send `!gruppi`, find the community announcement group (marked `(bacheca)`) and link it with `!associa <number> ateneo fondazione`;
+3. check with `!mappa` and preview a message with `!test giurisprudenza`;
+4. share the group invite links with the students.
 
-#### C.4 Check from your PC
+---
 
-```powershell
-curl.exe http://<IP>:8080/health
-curl.exe http://<IP>:8080/feeds
-```
+## Server setup history
 
-`/health` must answer with `"ok":true` and `"whatsapp":"connected"`.
+How the production server was created in October 2026. Kept as a record and as the recipe to rebuild it from scratch.
 
-### Part D — Maintenance
+1. **Oracle Cloud account** (Always Free), home region **Italy Northwest (Milan)**, compartment `assprimaverastudentescau (root)`.
+2. **SSH key** created on the PC:
 
-#### D.1 Update the code
+   ```powershell
+   ssh-keygen -t ed25519 -f $HOME\.ssh\oracle_umg
+   ```
 
-On the PC, rebuild the archive and upload it as in step B.5. On the server:
+3. **Network**: VCN `umg_news_vcn` with the public subnet `umg_news_bot_subnet` (`10.0.0.0/24`), the Internet Gateway `umg-news-igw`, the route rule `0.0.0.0/0 → umg-news-igw` in the default route table, and two ingress rules in the subnet's security list: TCP `22` (SSH) and TCP `8080` (feeds), both from `0.0.0.0/0`. On a new setup, _Networking → Virtual cloud networks → Start VCN Wizard → Create VCN with Internet Connectivity_ creates gateway and route automatically; only the `8080` rule must be added.
+4. **Virtual machine** `umg-news-bot`: image _Canonical Ubuntu 24.04_ (x86_64), shape `VM.Standard.E2.1.Micro` (1/8 OCPU, 1 GB memory), in `umg_news_bot_subnet` with an automatically assigned public IPv4 address (`<server-IP>`) and the public key `oracle_umg.pub`.
+5. **Server preparation** (on the server, via `ssh -i $HOME\.ssh\oracle_umg ubuntu@<server-IP>`): 2 GB of swap, Docker, and port 8080 in the local firewall.
 
-```bash
-tar -xzf ~/umg-news-bot.tgz -C ~/umg-news-bot && rm ~/umg-news-bot.tgz
-cd ~/umg-news-bot && docker compose up -d --build
-```
+   ```bash
+   sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+   sudo apt update && sudo apt install -y docker.io docker-compose-v2
+   sudo usermod -aG docker ubuntu
+   sudo iptables -I INPUT 6 -p tcp --dport 8080 -j ACCEPT
+   sudo netfilter-persistent save
+   ```
 
-The `.env` file and the `data/` folder on the server are left untouched: notices, links and the WhatsApp session stay as they are.
+6. **First deployment**: project copied to `~/umg-news-bot` (archive + `scp`, the same steps now automated by `scripts\deploy.ps1`), then on the server (the first build takes 10–15 minutes on the Micro machine):
 
-#### D.2 Make a backup
+   ```bash
+   cd ~/umg-news-bot
+   cp .env.example .env
+   nano .env     # WA_ENABLED=true, BASE_URL=http://<server-IP>:8080, WA_PAIRING_NUMBER=<bot number>
+   mkdir -p data && sudo chown 1000:1000 data && chmod 700 data
+   docker compose up -d --build
+   ```
 
-On the server, stop the service for a few seconds (so the database is copied in a consistent state), archive the data folder and start it again:
+7. **WhatsApp**: community and groups prepared, bot linked with the pairing code, links completed as in [WhatsApp setup](#whatsapp-setup-once).
 
-```bash
-cd ~/umg-news-bot
-docker compose stop
-sudo tar -czf ~/backup-data.tgz data && sudo chown $USER ~/backup-data.tgz
-docker compose start
-```
-
-From the PC, download it:
-
-```powershell
-scp -i $HOME\.ssh\oracle_umg ubuntu@<IP>:~/backup-data.tgz .
-```
-
-The backup contains the WhatsApp session: keep it somewhere private and **never start it on your PC** while the bot is running on the server.
-
-#### D.3 Relink WhatsApp
-
-If `/health` reports `"whatsapp":"logged_out"` or the logs show `logged out`, WhatsApp has unlinked the bot. On the server:
-
-```bash
-cd ~/umg-news-bot
-docker compose down
-sudo rm -rf data/wa-auth
-docker compose up -d
-docker compose logs -f
-```
-
-Then repeat step C.2 with the new code. Group links remain valid.
-
-#### D.4 Periodic checks
-
-- Open WhatsApp Business on the primary phone at least once every 14 days: the bot reminds you every week.
-- Check the status with `docker compose ps` (on the server) or `curl.exe http://<IP>:8080/health` (from the PC).
-- Read the latest events with `docker compose logs --tail 100`.
-- At the start of each academic year run `npm run check:sources` on the PC to spot moved boards or new courses.
-
-To serve the feeds over HTTPS with a free domain, follow the _HTTPS_ section of [DEPLOY.md](DEPLOY.md) (in Italian).
+To serve the feeds over HTTPS with a free domain, see [DEPLOY.md](DEPLOY.md) (in Italian).
