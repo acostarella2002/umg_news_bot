@@ -1,7 +1,7 @@
 // Owner commands, accepted ONLY in the bot account's own "Message yourself" chat.
 // Whoever holds the primary phone owns the bot: no phone numbers or hashes need to be stored.
 import { normalizeMessageContent } from '@whiskeysockets/baileys'; // unwraps disappearing / view-once / edited wrappers
-import { getKv, setKv, mapGroup, unmapGroup, listMappings, latestNotices, pendingDeliveries, sentLastHour, failedLastDay } from '../db.js'; // storage
+import { getKv, setKv, mapGroup, unmapGroup, listMappings, latestNotices, pendingDeliveries, sentLastHour, failedLastDay, queueLatest } from '../db.js'; // storage
 import { formatNotice } from './format.js'; // preview rendering
 
 // "39333…:12@s.whatsapp.net" -> "39333…@s.whatsapp.net" (drop device suffix).
@@ -79,6 +79,7 @@ const HELP = [
   '!dissocia <n|jid> <target> – scollega',
   '!mappa – collegamenti attuali',
   "!test <target> – anteprima dell'ultimo avviso (solo qui)",
+  "!prova [target] – invia nei gruppi l'ultimo avviso di ogni corso collegato (o di uno)",
   '!pausa / !riprendi – ferma o riprende gli invii',
 ].join('\n'); // one command per line
 
@@ -153,6 +154,14 @@ export async function handleCommand(text, { db, sock, names, state, courses = ne
       if (!names.has(target)) return 'Uso: !test <target> (vedi !target)'; // validation
       const [n] = latestNotices(db, target, 1); // newest notice
       return n ? `🧪 Anteprima:\n\n${formatNotice(n, names.get(target))}` : 'Nessun avviso per questo target.'; // preview only in self chat
+    }
+    case '!prova': {
+      const target = args[0]?.toLowerCase(); // optional single board
+      if (target && !names.has(target)) return 'Uso: !prova [target] (vedi !target)'; // validation
+      const n = queueLatest(db, target); // goes through the normal queue: pauses, hourly cap, retries
+      return n
+        ? `🧪 ${n} messaggi di prova in coda. Partono a ritmo anti-ban (con più di 10 in coda, uno ogni 2–3 minuti). Segui con !stato, ferma con !pausa.`
+        : 'Niente da mettere in coda: nessun collegamento, nessun avviso, o già inviato.';
     }
     case '!pausa':
       setKv(db, 'paused', '1'); // stop the sender

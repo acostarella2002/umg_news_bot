@@ -66,6 +66,29 @@ test('pendingDeliveries waits for detail body', () => {
 });
 
 // Key/value helpers round-trip strings.
+// !prova queues the newest (seeded) notice of each mapped course once, and waits for its body like normal notices.
+test('queueLatest sends the newest notice once per group', () => {
+  const d = db.openDb(':memory:'); // fresh DB
+  db.upsertNotices(d, 'infermieristica', [n(1, { body: 'a' }), n(2, { published: '2026-10-09T10:00:00.000Z' })], false); // seeded history
+  db.mapGroup(d, 'infermieristica', 'g@g.us'); // mapped after the seed
+  assert.equal(db.pendingDeliveries(d).length, 0); // nothing by itself
+  assert.equal(db.queueLatest(d), 1); // newest one queued
+  assert.equal(db.queueLatest(d), 0); // not twice
+  assert.deepEqual(
+    db.noticesNeedingDetail(d, 10).map((r) => r.url),
+    [n(2).url],
+  ); // its body is fetched even though it was seeded
+  assert.equal(db.pendingDeliveries(d).length, 0); // held back until the body arrives
+  db.saveDetail(d, n(2).url, { body: 'b', attachments: [] }); // detail fetched
+  assert.deepEqual(
+    db.pendingDeliveries(d).map((r) => r.url),
+    [n(2).url],
+  ); // released
+  db.recordDelivery(d, n(2).url, 'g@g.us', 'sent'); // sent
+  assert.equal(db.queueLatest(d), 0); // already delivered: not queued again
+  assert.equal(db.queueLatest(d, 'fisioterapia'), 0); // unmapped target
+});
+
 test('kv round trip', () => {
   const d = db.openDb(':memory:'); // fresh DB
   assert.equal(db.getKv(d, 'x'), null); // missing key

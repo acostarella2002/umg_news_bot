@@ -1,5 +1,6 @@
 // WhatsApp connection (Baileys linked device) with privacy-first settings and safe reconnects.
-import { mkdirSync } from 'node:fs'; // auth folder creation
+import { mkdirSync, rmSync } from 'node:fs'; // auth folder creation and reset
+import qrcode from 'qrcode-terminal'; // draws the link QR in the logs
 import pino from 'pino'; // Baileys requires a pino-compatible logger
 import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestWaWebVersion } from '@whiskeysockets/baileys'; // WhatsApp Web protocol
 import { ownerCommands } from './commands.js'; // self-chat filter
@@ -9,8 +10,9 @@ import { redact } from '../redact.js'; // log scrubbing
 const REPLACED_PAUSE_MS = 15 * 60_000;
 
 // Milliseconds to wait before reconnecting after a close with this status code; null = never (a human must relink).
-export const reconnectDelay = (code, retryMs) =>
-  code === DisconnectReason.loggedOut ? null : code === DisconnectReason.connectionReplaced ? REPLACED_PAUSE_MS : retryMs;
+// A logout before the first link only means the code/QR expired unused: retry with a fresh session.
+export const reconnectDelay = (code, retryMs, registered = true) =>
+  code === DisconnectReason.loggedOut ? (registered ? null : retryMs) : code === DisconnectReason.connectionReplaced ? REPLACED_PAUSE_MS : retryMs;
 
 // Start the client; returns getSock() (live socket or null while disconnected) and getStatus() for /health.
 export function startWhatsApp({ authDir, pairingNumber, log, onMessage, onOpen }) {
@@ -50,10 +52,14 @@ export function startWhatsApp({ authDir, pairingNumber, log, onMessage, onOpen }
 
     let pairingRequested = false; // ask for a pairing code only once per socket
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
-      if (qr && !state.creds.registered && !pairingRequested) {
+      if (qr && !state.creds.registered && !pairingNumber) {
+        // not linked yet and no number: show the QR (it refreshes about every 20 s)
+        log.info('LINK QR below  ->  on the bot phone: WhatsApp Business > Linked devices > Link a device, scan it');
+        qrcode.generate(qr, { small: true }, (art) => process.stdout.write(art + '\n')); // plain stdout: pino would escape the drawing
+      }
+      if (qr && !state.creds.registered && pairingNumber && !pairingRequested) {
         // not linked yet: use a pairing code instead of a QR
         pairingRequested = true; // once
-        if (!pairingNumber) return log.error('WA_PAIRING_NUMBER is not set: cannot link the bot'); // configuration error
         const code = await sock.requestPairingCode(pairingNumber); // 8-character code
         log.info(`PAIRING CODE: ${code}  ->  on the bot phone: WhatsApp Business > Linked devices > Link with phone number`); // shown once in the logs
       }
@@ -67,7 +73,11 @@ export function startWhatsApp({ authDir, pairingNumber, log, onMessage, onOpen }
       if (connection === 'close') {
         current = null; // stop sending
         const code = lastDisconnect?.error?.output?.statusCode; // reason
-        const delay = reconnectDelay(code, retryMs); // how long to wait, or null
+        const delay = reconnectDelay(code, retryMs, state.creds.registered); // how long to wait, or null
+        if (code === DisconnectReason.loggedOut && !state.creds.registered) {
+          rmSync(authDir, { recursive: true, force: true }); // unused half-made session: nothing of value inside
+          mkdirSync(authDir, { recursive: true, mode: 0o700 }); // fresh empty folder for the next code/QR
+        }
         if (delay === null) {
           status = 'logged_out';
           return log.error('whatsapp logged out: delete the wa-auth folder and link again'); // never auto-relink

@@ -83,20 +83,20 @@ The bot speaks the WhatsApp Web protocol through the Baileys library, which is n
 
 The configuration lives in the server's `.env` file, created by copying `.env.example`, which contains the recommended values. The bot's phone number goes only in the server's `.env`: the repository keeps a placeholder.
 
-| Variable             | Value in `.env.example` | Description                                                                                                  |
-| -------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `BASE_URL`           | `http://localhost:8080` | Public address of the server, used in feed links. On the server: `http://<server-IP>:8080`.                  |
-| `PORT`               | `8080`                  | HTTP port inside the container.                                                                              |
-| `POLL_MINUTES`       | `10`                    | Minutes between two board checks.                                                                            |
-| `WA_ENABLED`         | `false`                 | `false` runs the RSS feeds only (for tests on the PC). On the server: `true`.                                |
-| `WA_PAIRING_NUMBER`  | `39xxxxxxxxxx`          | Number of the bot's WhatsApp Business account, digits only with country code (`39…`). Used only for pairing. |
-| `SEND_MIN_DELAY_S`   | `8`                     | Minimum pause between two messages, in seconds.                                                              |
-| `SEND_MAX_DELAY_S`   | `20`                    | Maximum pause between two messages, in seconds.                                                              |
-| `SLOW_MIN_DELAY_S`   | `120`                   | Minimum pause when more than 10 messages are queued.                                                         |
-| `SLOW_MAX_DELAY_S`   | `180`                   | Maximum pause when more than 10 messages are queued.                                                         |
-| `MAX_SENDS_PER_HOUR` | `40`                    | Maximum number of messages per hour.                                                                         |
-| `KEEPALIVE_DAYS`     | `6`                     | Days between two reminders to open the phone (see [Reminder](#reminder-to-open-the-phone)).                  |
-| `LOG_LEVEL`          | `info`                  | Log detail: `fatal`, `error`, `warn`, `info`, `debug`.                                                       |
+| Variable             | Value in `.env.example` | Description                                                                                                                                                               |
+| -------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BASE_URL`           | `http://localhost:8080` | Public address of the server, used in feed links. On the server: `http://<server-IP>:8080`.                                                                               |
+| `PORT`               | `8080`                  | HTTP port inside the container.                                                                                                                                           |
+| `POLL_MINUTES`       | `10`                    | Minutes between two board checks.                                                                                                                                         |
+| `WA_ENABLED`         | `false`                 | `false` runs the RSS feeds only (for tests on the PC). On the server: `true`.                                                                                             |
+| `WA_PAIRING_NUMBER`  | `39xxxxxxxxxx`          | Number of the bot's WhatsApp Business account, digits only with country code (`39…`). Set: link with an 8-character code. **Empty: link by scanning a QR** (recommended). |
+| `SEND_MIN_DELAY_S`   | `8`                     | Minimum pause between two messages, in seconds.                                                                                                                           |
+| `SEND_MAX_DELAY_S`   | `20`                    | Maximum pause between two messages, in seconds.                                                                                                                           |
+| `SLOW_MIN_DELAY_S`   | `120`                   | Minimum pause when more than 10 messages are queued.                                                                                                                      |
+| `SLOW_MAX_DELAY_S`   | `180`                   | Maximum pause when more than 10 messages are queued.                                                                                                                      |
+| `MAX_SENDS_PER_HOUR` | `40`                    | Maximum number of messages per hour.                                                                                                                                      |
+| `KEEPALIVE_DAYS`     | `6`                     | Days between two reminders to open the phone (see [Reminder](#reminder-to-open-the-phone)).                                                                               |
+| `LOG_LEVEL`          | `info`                  | Log detail: `fatal`, `error`, `warn`, `info`, `debug`.                                                                                                                    |
 
 ### Notice boards
 
@@ -135,18 +135,19 @@ Rules to keep in mind:
 
 ### Commands at a glance
 
-| Command                       | What it does                                               |
-| ----------------------------- | ---------------------------------------------------------- |
-| `!aiuto`                      | Lists the commands.                                        |
-| `!stato`                      | Shows whether the bot is working.                          |
-| `!autoassocia`                | Links every course to the group with the same name.        |
-| `!gruppi`                     | Lists the groups the bot belongs to, numbered.             |
-| `!target [word]`              | Lists the ids of courses, schools and sources.             |
-| `!associa <group> <target…>`  | Links a group to one or more targets.                      |
-| `!dissocia <group> <target…>` | Removes a link.                                            |
-| `!mappa`                      | Shows every link and flags the broken ones.                |
-| `!test <target>`              | Previews the latest notice of a target, only in this chat. |
-| `!pausa` / `!riprendi`        | Stops or restarts sending to the groups.                   |
+| Command                       | What it does                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------- |
+| `!aiuto`                      | Lists the commands.                                                                       |
+| `!stato`                      | Shows whether the bot is working.                                                         |
+| `!autoassocia`                | Links every course to the group with the same name.                                       |
+| `!gruppi`                     | Lists the groups the bot belongs to, numbered.                                            |
+| `!target [word]`              | Lists the ids of courses, schools and sources.                                            |
+| `!associa <group> <target…>`  | Links a group to one or more targets.                                                     |
+| `!dissocia <group> <target…>` | Removes a link.                                                                           |
+| `!mappa`                      | Shows every link and flags the broken ones.                                               |
+| `!test <target>`              | Previews the latest notice of a target, only in this chat.                                |
+| `!prova [target]`             | Sends the latest notice of every linked course (or of one) to its groups, as a real test. |
+| `!pausa` / `!riprendi`        | Stops or restarts sending to the groups.                                                  |
 
 ### Each command in detail
 
@@ -271,9 +272,29 @@ Shows each target with the name of its group. `⚠️ bot non più nel gruppo` m
 
 `!test giurisprudenza` shows, **only in this chat**, the latest notice of that target exactly as the groups would receive it. Nothing is sent to the groups.
 
+#### `!prova` — real test in the groups
+
+`!prova` puts in the queue the latest notice of every linked target, one per group; `!prova farmacia` does it for one course only. Messages go through the normal queue, so the anti-ban rules apply: with more than 10 queued, one every 2–3 minutes (about 2 hours for 40 groups) and at most 40 per hour. Follow the progress with `!stato`, stop with `!pausa`. A notice already sent to a group is never sent again.
+
 #### `!pausa` and `!riprendi` — emergency stop
 
 `!pausa` stops every message to the groups immediately; RSS feeds keep working and new notices keep piling up in the queue. `!riprendi` restarts sending. Use it if something looks wrong, for example a burst of unexpected messages.
+
+### Message format
+
+The text of every message comes from `config/message.json`, the same for all groups:
+
+```json
+"lines": ["*📢{titolo}*", "", "{testo}", "", "{link}", "", "*#PrimaveraStudentescaUMG*🌸"],
+"attachment": "• {nome}: {url}",
+"maxBody": 700
+```
+
+- Placeholders: `{bacheca}` course/school name, `{titolo}`, `{data}` (Rome time), `{testo}` body excerpt (at most `maxBody` characters), `{allegati}` attachment list (each one built with `attachment`), `{link}` the notice page.
+- A line whose placeholder is empty (no date, no attachments…) is dropped; `""` is a blank line.
+- WhatsApp markup works: `*bold*`, `_italic_`, `~strikethrough~`.
+- An unknown placeholder (a typo such as `{titlo}`) stops the bot at startup with a clear error in the logs.
+- After editing: deploy (`.\scripts\deploy.ps1`) and check with `!test <target>`.
 
 ### Reminder to open the phone
 
@@ -302,7 +323,7 @@ Every 6 days (`KEEPALIVE_DAYS`) the bot writes a reminder with a short status in
 | Command                 | Description                                                             |
 | ----------------------- | ----------------------------------------------------------------------- |
 | `npm ci`                | Installs the dependencies exactly at the locked versions.               |
-| `npm test`              | Runs the 56 automated tests (modules, security, end-to-end flow).       |
+| `npm test`              | Runs the 59 automated tests (modules, security, end-to-end flow).       |
 | `npm run lint`          | Checks the code with ESLint.                                            |
 | `npm run format:check`  | Checks formatting with Prettier (`npm run format` fixes it).            |
 | `npm run check:sources` | Checks every board live and reports the empty or unreachable ones.      |
@@ -351,25 +372,32 @@ The bot runs on an Oracle Cloud **Always Free** virtual machine (`VM.Standard.E2
 
 ### Deploy a change
 
+The server does **not** read from GitHub: `git push` only saves the code online, `deploy.ps1` is what updates the bot. The usual sequence:
+
 ```powershell
-npm test
-.\scripts\deploy.ps1
+npm test; npm run lint; npm run format:check      # everything must pass
+git add -A
+git commit -m "describe the change"
+git push                                          # save on GitHub
+.\scripts\deploy.ps1                              # update the server
+curl.exe "http://${IP}:8080/health"               # after ~30 s: "ok":true, "whatsapp":"connected"
 ```
 
 `deploy.ps1` packs the project, uploads it, rebuilds the container and restarts the bot, then prints the container status. The server's `.env` and `data/` (notices, group links, WhatsApp session) are never touched. On the Micro machine the rebuild takes a few minutes.
 
 ### Everyday commands
 
-| Task                        | Command                                                                        |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| Check that everything works | `curl.exe "http://${IP}:8080/health"`                                          |
-| Open a shell on the server  | `ssh -i $KEY ubuntu@$IP`                                                       |
-| Container status            | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose ps"`                |
-| Last 100 log lines          | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose logs --tail 100"`   |
-| Follow the logs live        | `ssh -t -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose logs -f"`        |
-| Restart the bot             | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose restart"`           |
-| Stop / start the bot        | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose stop"` (or `start`) |
-| Stop only WhatsApp messages | write `!pausa` in the "Message yourself" chat (`!riprendi` to resume)          |
+| Task                          | Command                                                                            |
+| ----------------------------- | ---------------------------------------------------------------------------------- |
+| Update the code on the server | `.\scripts\deploy.ps1` (after `npm test`; see [Deploy a change](#deploy-a-change)) |
+| Check that everything works   | `curl.exe "http://${IP}:8080/health"`                                              |
+| Open a shell on the server    | `ssh -i $KEY ubuntu@$IP`                                                           |
+| Container status              | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose ps"`                    |
+| Last 100 log lines            | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose logs --tail 100"`       |
+| Follow the logs live          | `ssh -t -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose logs -f"`            |
+| Restart the bot               | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose restart"`               |
+| Stop / start the bot          | `ssh -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose stop"` (or `start`)     |
+| Stop only WhatsApp messages   | write `!pausa` in the "Message yourself" chat (`!riprendi` to resume)              |
 
 Press `Ctrl+C` to leave the live logs; the bot keeps running.
 
@@ -398,7 +426,7 @@ If `/health` reports `"whatsapp":"logged_out"`, WhatsApp has unlinked the bot:
 ssh -t -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose down && sudo rm -rf data/wa-auth && docker compose up -d && docker compose logs -f"
 ```
 
-When `PAIRING CODE: XXXX-XXXX` appears, enter it on the phone as in [Link the bot](#link-the-bot). Group links are kept.
+Then scan the QR (or enter the code) as in [Link the bot](#link-the-bot). Group links are kept.
 
 ### Periodic checks
 
@@ -473,8 +501,10 @@ No groups are needed for the schools: their notices already reach all their cour
 
 ### Link the bot
 
-1. Follow the logs (`ssh -t -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose logs -f"`) and wait for `PAIRING CODE: XXXX-XXXX`.
-2. On the phone: _WhatsApp Business → Linked devices → Link a device → Link with phone number instead_, and enter the code.
+1. Follow the logs: `ssh -t -i $KEY ubuntu@$IP "cd umg-news-bot && docker compose logs -f --no-log-prefix --tail 40"`.
+2. With `WA_PAIRING_NUMBER` empty a QR is drawn (a new one every ~20 s; shrink the font with Ctrl + - if it looks distorted). On the phone: _WhatsApp Business → Linked devices → Link a device_ and scan the **latest** QR.
+   With a number set, `PAIRING CODE: XXXX-XXXX` appears instead: _Link a device → Link with phone number instead_. The code only works on that exact number and expires in ~2 minutes.
+   If nothing is scanned in time, the bot shows a new QR/code by itself after a short pause.
 3. The logs show `whatsapp connected`. In the **"Message yourself"** chat the bot sends the report _"🔗 Associazione automatica gruppi → corsi"_ with the courses linked to their groups.
 
 ### Complete the links
@@ -517,11 +547,11 @@ How the production server was created in October 2026. Kept as a record and as t
    ```bash
    cd ~/umg-news-bot
    cp .env.example .env
-   nano .env     # WA_ENABLED=true, BASE_URL=http://<server-IP>:8080, WA_PAIRING_NUMBER=<bot number>
-   mkdir -p data && sudo chown 1000:1000 data && chmod 700 data
+   nano .env     # WA_ENABLED=true, BASE_URL=http://<server-IP>:8080, WA_PAIRING_NUMBER= (empty: QR)
+   mkdir -p data && sudo chown 1000:1000 data && sudo chmod 700 data
    docker compose up -d --build
    ```
 
-7. **WhatsApp**: community and groups prepared, bot linked with the pairing code, links completed as in [WhatsApp setup](#whatsapp-setup-once).
+7. **WhatsApp**: community and groups prepared, bot linked by QR (the pairing code was refused by the phone with "couldn't link device"), links completed as in [WhatsApp setup](#whatsapp-setup-once).
 
 To serve the feeds over HTTPS with a free domain, see [DEPLOY.md](DEPLOY.md) (in Italian).

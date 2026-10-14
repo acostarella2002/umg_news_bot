@@ -41,7 +41,7 @@ test('sends with presence and honours rate limit', async () => {
   assert.equal(await s.sendNext(), 'sent'); // 2nd
   assert.equal(await s.sendNext(), 'rate'); // cap of 2/hour reached
   assert.deepEqual(sock.calls[0], ['presence', 'composing', 'g@g.us']); // typed first
-  assert.match(sock.calls[1][2], /^📢 \*Giurisprudenza\*/); // board name used
+  assert.match(sock.calls[1][2], /T0[\s\S]*https:\/\/diges\.unicz\.it\/avviso\/0/); // formatted notice sent
 });
 
 // Pause flag and missing connection stop sending.

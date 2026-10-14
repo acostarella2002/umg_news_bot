@@ -1,0 +1,13 @@
+{
+  "_istruzioni": [
+    "Modello del messaggio WhatsApp inviato per ogni avviso, uguale per tutti i gruppi.",
+    "lines: le righe del messaggio, in ordine. Una riga che contiene un segnaposto vuoto (es. avviso senza data) viene tolta; \"\" = riga vuota; \\n = a capo dentro la stessa riga (sparisce tutta insieme).",
+    "Segnaposti: {bacheca} nome del corso/scuola, {titolo}, {data} (ora di Roma), {testo} estratto del corpo, {allegati} elenco allegati, {link} pagina dell'avviso.",
+    "attachment: modello di ogni allegato dentro {allegati}; segnaposti {nome} e {url}.",
+    "maxBody: lunghezza massima di {testo}, tagliato a fine parola con '…'.",
+    "Formattazione WhatsApp: *grassetto*, _corsivo_, ~barrato~. Dopo una modifica: riavvia il bot e controlla con !test <corso>."
+  ],
+  "lines": ["*📢{titolo}*", "", "{testo}", "", "{link}", "", "*#PrimaveraStudentescaUMG*🌸"],
+  "attachment": "• {nome}: {url}",
+  "maxBody": 700
+}

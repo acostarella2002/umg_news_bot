@@ -63,6 +63,10 @@ test('misc commands', async () => {
   assert.equal(getKv(db, 'paused'), '0'); // flag cleared
   upsertNotices(db, 'giuri', [{ url: 'https://diges.unicz.it/avviso/1', title: 'Lezione', body: 'x' }], true); // a notice
   assert.match(await handleCommand('!test giuri', ctx), /Anteprima[\s\S]*Lezione/); // preview text
+  assert.match(await handleCommand('!prova nope', ctx), /Uso: !prova/); // unknown target
+  assert.match(await handleCommand('!prova', ctx), /Niente da mettere in coda/); // no mapping yet
+  mapGroup(db, 'giuri', '1@g.us'); // link a group
+  assert.match(await handleCommand('!prova giuri', ctx), /1 messaggi di prova in coda/); // queued
   assert.match(await handleCommand('!stato', ctx), /Invii: ▶️ attivi/); // status text
   assert.match(await handleCommand('!xyz', ctx), /sconosciuto/); // unknown command
 });

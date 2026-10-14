@@ -1,6 +1,23 @@
-// Build the WhatsApp text for one notice (plain text with WhatsApp *bold* markup).
+// Build the WhatsApp text for one notice from the editable template in config/message.json.
+import { readFileSync } from 'node:fs'; // sync read is fine: runs once at startup
+import { join } from 'node:path'; // portable path joining
 
-const MAX_BODY = 700; // excerpt length: enough to read, short enough for a chat
+// Placeholders a template may use; anything else is a typo and stops the bot at startup.
+const KNOWN = ['bacheca', 'titolo', 'data', 'testo', 'allegati', 'link', 'nome', 'url'];
+
+// Load and check a template object; throws with a readable message when it is broken.
+export function checkTemplate(t) {
+  if (!Array.isArray(t?.lines) || typeof t.attachment !== 'string' || !(t.maxBody > 0)) throw new Error('message.json: needs lines[], attachment, maxBody'); // shape
+  const bad = [...t.lines, t.attachment]
+    .join(' ')
+    .match(/\{[^}]*\}/g)
+    ?.filter((p) => !KNOWN.includes(p.slice(1, -1))); // unknown placeholders
+  if (bad?.length) throw new Error(`message.json: unknown placeholders ${bad.join(', ')}`); // e.g. {titlo}
+  return t; // valid
+}
+
+// Template shipped in config/ (copied into the Docker image with the sources).
+export const template = checkTemplate(JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'config', 'message.json'), 'utf8')));
 
 // Remove WhatsApp markup characters from scraped text so titles cannot break formatting.
 const clean = (s) =>
@@ -14,17 +31,24 @@ const fmtDate = (iso) =>
     ? new Date(iso).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     : ''; // empty when unknown
 
-// Compose the message: header with the board name, title, date, excerpt, attachments, link.
-export function formatNotice(notice, boardName) {
+// Replace {placeholders} in one pass (values containing "{…}" are never expanded again).
+const fill = (line, v) => line.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
+
+// Compose the message: every template line, minus those whose placeholders are empty.
+export function formatNotice(notice, boardName, t = template) {
   const body = clean(notice.body); // plain text body
-  const excerpt = body.length > MAX_BODY ? `${body.slice(0, MAX_BODY).replace(/\s+\S*$/, '')}…` : body; // cut on a word boundary
-  const lines = [
-    `📢 *${clean(boardName)}*`, // which board the notice comes from
-    `*${clean(notice.title)}*`, // notice title in bold
-    fmtDate(notice.published) && `🗓️ ${fmtDate(notice.published)}`, // publication date
-    excerpt && `\n${excerpt}`, // excerpt after a blank line
-    notice.attachments?.length && `\n📎 *Allegati*\n${notice.attachments.map((a) => `• ${clean(a.name)}: ${a.url}`).join('\n')}`, // attachment links
-    `\n🔗 ${notice.url}`, // original notice
-  ];
-  return lines.filter(Boolean).join('\n'); // drop empty parts
+  const v = {
+    bacheca: clean(boardName), // which board the notice comes from
+    titolo: clean(notice.title), // notice title
+    data: fmtDate(notice.published), // publication date
+    testo: body.length > t.maxBody ? `${body.slice(0, t.maxBody).replace(/\s+\S*$/, '')}…` : body, // excerpt cut on a word boundary
+    allegati: (notice.attachments ?? []).map((a) => fill(t.attachment, { nome: clean(a.name), url: a.url })).join('\n'), // attachment links
+    link: notice.url, // original notice
+  };
+  return t.lines
+    .filter((l) => [...l.matchAll(/\{(\w+)\}/g)].every(([, k]) => v[k])) // drop lines with an empty part (no date, no body…)
+    .map((l) => fill(l, v))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n') // dropped parts leave at most one blank line
+    .trim();
 }

@@ -81,13 +81,13 @@ test('a new notice reaches exactly the linked groups, once each', async () => {
   while ((await sender.sendNext()) === 'sent'); // drain the queue
   assert.equal(await sender.sendNext(), 'idle'); // nothing left
 
-  const got = sent.map(([jid, text]) => `${jid} ${text.split('\n')[0]} ${text.split('\n').at(-1)}`).sort(); // group, header, link
+  const got = sent.map(([jid, text]) => `${jid} ${text.match(/https:\/\/\S+/)[0]}`).sort(); // group, notice link
   assert.deepEqual(got, [
-    '111-1@g.us 📢 *Giurisprudenza* 🔗 https://diges.unicz.it/avviso/51', // school notice, once despite two sources
-    '111-1@g.us 📢 *Giurisprudenza* 🔗 https://diges.unicz.it/avviso_didattica/2', // course notice
-    '222-2@g.us 📢 *Economia Aziendale* 🔗 https://diges.unicz.it/avviso/51', // school fan-out to the other course
-    '222-2@g.us 📢 *Economia Aziendale* 🔗 https://diges.unicz.it/avviso_didattica/10', // its own notice
-    '333-3@g.us 📢 *Fondazione UMG* 🔗 https://www.fondazioneumg.it/bandi/2', // feed to the community board
+    '111-1@g.us https://diges.unicz.it/avviso/51', // school notice, once despite two sources
+    '111-1@g.us https://diges.unicz.it/avviso_didattica/2', // course notice
+    '222-2@g.us https://diges.unicz.it/avviso/51', // school fan-out to the other course
+    '222-2@g.us https://diges.unicz.it/avviso_didattica/10', // its own notice
+    '333-3@g.us https://www.fondazioneumg.it/bandi/2', // feed to the community board
   ]);
   assert.ok(sent.every(([, text]) => !/Vecchio|personale/.test(text))); // seeded and staff-only notices never sent
   assert.match(sent.find(([, t]) => t.includes('avviso_didattica/2'))[1], /Aula 3/); // body from the detail page

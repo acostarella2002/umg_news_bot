@@ -35,6 +35,12 @@ export function openDb(file) {
       at TEXT NOT NULL,                       -- timestamp
       PRIMARY KEY (url, jid)
     );
+    CREATE TABLE IF NOT EXISTS manual_sends (
+      url TEXT NOT NULL,                      -- notice the owner asked to send with !prova
+      jid TEXT NOT NULL,                      -- group it goes to
+      at TEXT NOT NULL,                       -- request time (same 3-day limit as normal notices)
+      PRIMARY KEY (url, jid)
+    );
     CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT); -- small state: seeded sources, last poll, pause flag
   `);
   return db; // ready to use
@@ -74,14 +80,16 @@ export function upsertNotices(db, target, items, notify) {
 }
 
 // Notices that should be sent but still miss the detail body.
-export const noticesNeedingDetail = (db, limit) => db.prepare('SELECT url FROM notices WHERE notify = 1 AND body IS NULL LIMIT ?').all(limit); // RSS items arrive with a (possibly empty) body, so only CMS pages match
+export const noticesNeedingDetail = (db, limit) =>
+  db.prepare('SELECT url FROM notices WHERE body IS NULL AND (notify = 1 OR url IN (SELECT url FROM manual_sends)) LIMIT ?').all(limit); // RSS items arrive with a (possibly empty) body, so only CMS pages match
 
 // Save the detail body and attachments of a notice.
 export const saveDetail = (db, url, { body, attachments }) =>
   db.prepare('UPDATE notices SET body = ?, attachments = ? WHERE url = ?').run(body, JSON.stringify(attachments), url); // fill lazily
 
 // Pending WhatsApp deliveries: notices to send to groups mapped to their targets.
-// Only notices first seen after the mapping and within maxAgeDays are sent (no floods after downtime).
+// Only notices first seen after the mapping and within maxAgeDays are sent (no floods after downtime),
+// plus the ones the owner queued with !prova (requested within maxAgeDays).
 export function pendingDeliveries(db, maxAgeDays = 3) {
   const since = new Date(Date.now() - maxAgeDays * 864e5).toISOString(); // freshness cutoff
   return db
@@ -91,12 +99,13 @@ export function pendingDeliveries(db, maxAgeDays = 3) {
        JOIN notice_targets t ON t.url = n.url
        JOIN group_map g ON g.target = t.target
        LEFT JOIN deliveries d ON d.url = n.url AND d.jid = g.jid
-       WHERE n.notify = 1 AND d.url IS NULL AND n.first_seen >= g.created_at AND n.first_seen >= ?
-         AND (n.body IS NOT NULL OR n.first_seen < ?)
+       LEFT JOIN manual_sends m ON m.url = n.url AND m.jid = g.jid
+       WHERE d.url IS NULL AND ((n.notify = 1 AND n.first_seen >= g.created_at AND n.first_seen >= ?) OR m.at >= ?)
+         AND (n.body IS NOT NULL OR COALESCE(m.at, n.first_seen) < ?)
        GROUP BY n.url, g.jid
        ORDER BY n.first_seen, n.url`, // oldest first, one row per (notice, group)
     )
-    .all(since, new Date(Date.now() - 36e5).toISOString()); // wait for the body, but at most 1 hour
+    .all(since, since, new Date(Date.now() - 36e5).toISOString()); // wait for the body, but at most 1 hour
 }
 
 // Mark a notice as sent (or permanently failed) for one group.
@@ -131,6 +140,20 @@ export const latestNotices = (db, target, limit = 50) =>
     : db.prepare('SELECT * FROM notices ORDER BY COALESCE(published, first_seen) DESC LIMIT ?').all(limit)
   ) // everything
     .map((n) => ({ ...n, attachments: JSON.parse(n.attachments) })); // decode JSON column
+
+// Queue the newest notice of each mapped target (or of one target) for its groups; returns how many were queued.
+export function queueLatest(db, target) {
+  const ins = db.prepare(
+    'INSERT OR IGNORE INTO manual_sends (url, jid, at) SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM deliveries WHERE url = ? AND jid = ?)',
+  ); // skip already delivered
+  let queued = 0; // counter
+  for (const m of listMappings(db))
+    if (!target || m.target === target) {
+      const [n] = latestNotices(db, m.target, 1); // newest notice of this course
+      if (n) queued += Number(ins.run(n.url, m.jid, now(), n.url, m.jid).changes); // one per (notice, group)
+    }
+  return queued;
+}
 
 // Map a WhatsApp group to a target.
 export const mapGroup = (db, target, jid) => db.prepare('INSERT OR IGNORE INTO group_map (target, jid, created_at) VALUES (?, ?, ?)').run(target, jid, now()); // idempotent

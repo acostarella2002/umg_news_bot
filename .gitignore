@@ -3,3 +3,4 @@ data/
 .env
 .tools/
 brain/.obsidian/workspace*.json
+ssh_umg_bot.txt
