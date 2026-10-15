@@ -31,7 +31,7 @@ export function openDb(file) {
     CREATE TABLE IF NOT EXISTS deliveries (
       url TEXT NOT NULL,                      -- notice URL
       jid TEXT NOT NULL,                      -- group it was sent to
-      status TEXT NOT NULL,                   -- 'sent' or 'failed'
+      status TEXT NOT NULL,                   -- 'sent', 'failed', 'skipped' (!svuota) or 'duplicate' (same notice already sent)
       at TEXT NOT NULL,                       -- timestamp
       PRIMARY KEY (url, jid)
     );
@@ -90,7 +90,8 @@ export const saveDetail = (db, url, { body, attachments }) =>
 // Pending WhatsApp deliveries: notices to send to groups mapped to their targets.
 // Only notices first seen after the mapping and within maxAgeDays are sent (no floods after downtime),
 // plus the ones the owner queued with !prova (requested within maxAgeDays).
-export function pendingDeliveries(db, maxAgeDays = 3) {
+// withWaiting = true also lists the ones still waiting for their body (used by !svuota).
+export function pendingDeliveries(db, maxAgeDays = 3, withWaiting = false) {
   const since = new Date(Date.now() - maxAgeDays * 864e5).toISOString(); // freshness cutoff
   return db
     .prepare(
@@ -101,16 +102,42 @@ export function pendingDeliveries(db, maxAgeDays = 3) {
        LEFT JOIN deliveries d ON d.url = n.url AND d.jid = g.jid
        LEFT JOIN manual_sends m ON m.url = n.url AND m.jid = g.jid
        WHERE d.url IS NULL AND ((n.notify = 1 AND n.first_seen >= g.created_at AND n.first_seen >= ?) OR m.at >= ?)
-         AND (n.body IS NOT NULL OR COALESCE(m.at, n.first_seen) < ?)
+         AND (? OR n.body IS NOT NULL OR COALESCE(m.at, n.first_seen) < ?)
        GROUP BY n.url, g.jid
        ORDER BY n.first_seen, n.url`, // oldest first, one row per (notice, group)
     )
-    .all(since, since, new Date(Date.now() - 36e5).toISOString()); // wait for the body, but at most 1 hour
+    .all(since, since, withWaiting ? 1 : 0, new Date(Date.now() - 36e5).toISOString()); // wait for the body, but at most 1 hour
 }
 
 // Mark a notice as sent (or permanently failed) for one group.
 export const recordDelivery = (db, url, jid, status) =>
   db.prepare('INSERT OR REPLACE INTO deliveries (url, jid, status, at) VALUES (?, ?, ?, ?)').run(url, jid, status, now()); // idempotent
+
+// Drop every queued message (also the ones waiting for their body); returns how many were dropped.
+export function skipPending(db) {
+  const rows = pendingDeliveries(db, 3, true); // whole queue
+  for (const r of rows) recordDelivery(db, r.url, r.jid, 'skipped'); // out of the queue for good
+  return rows.length;
+}
+
+// Same title (case and spaces ignored) and same attachment links = the same notice published twice.
+const twinKey = (n) =>
+  `${n.title.toLowerCase().replace(/\s+/g, ' ').trim()}|${JSON.parse(n.attachments)
+    .map((a) => a.url)
+    .sort()
+    .join(' ')}`;
+
+// True when the group already received, in the last 3 days, a notice identical to this one under another URL.
+export function sentTwin(db, url, jid) {
+  const me = db.prepare('SELECT title, attachments FROM notices WHERE url = ?').get(url); // notice about to be sent
+  const since = new Date(Date.now() - 3 * 864e5).toISOString(); // same window as the queue
+  return db
+    .prepare(
+      "SELECT n.title, n.attachments FROM deliveries d JOIN notices n ON n.url = d.url WHERE d.jid = ? AND d.status = 'sent' AND d.at >= ? AND d.url != ?",
+    )
+    .all(jid, since, url)
+    .some((o) => twinKey(o) === twinKey(me)); // different attachment numbers = different notices
+}
 
 // Number of messages sent in the last hour (rate limiting).
 export const sentLastHour = (db) =>

@@ -139,7 +139,7 @@ Rules to keep in mind:
 | ----------------------------- | ----------------------------------------------------------------------------------------- |
 | `!aiuto`                      | Lists the commands.                                                                       |
 | `!stato`                      | Shows whether the bot is working.                                                         |
-| `!autoassocia`                | Links every course to the group with the same name.                                       |
+| `!autoassocia`                | Links every course, school, Ateneo and Fondazione to the group with the same name.        |
 | `!gruppi`                     | Lists the groups the bot belongs to, numbered.                                            |
 | `!target [word]`              | Lists the ids of courses, schools and sources.                                            |
 | `!associa <group> <target…>`  | Links a group to one or more targets.                                                     |
@@ -148,6 +148,7 @@ Rules to keep in mind:
 | `!test <target>`              | Previews the latest notice of a target, only in this chat.                                |
 | `!prova [target]`             | Sends the latest notice of every linked course (or of one) to its groups, as a real test. |
 | `!pausa` / `!riprendi`        | Stops or restarts sending to the groups.                                                  |
+| `!svuota`                     | Cancels every queued message.                                                             |
 
 ### Each command in detail
 
@@ -280,6 +281,17 @@ Shows each target with the name of its group. `⚠️ bot non più nel gruppo` m
 
 `!pausa` stops every message to the groups immediately; RSS feeds keep working and new notices keep piling up in the queue. `!riprendi` restarts sending. Use it if something looks wrong, for example a burst of unexpected messages.
 
+#### `!svuota` — empty the queue
+
+`!svuota` cancels every message still in the queue (also those waiting for the notice text) and answers how many were cancelled. The notices stay in the RSS feeds; new notices published afterwards are sent normally. Typical use: after `!pausa`, when the queued messages are no longer worth sending.
+
+### Which group receives what
+
+- **Course notice** → the group of that course.
+- **School notice** (Medicina, SFN, DiGES) → the school group, if the school has one; otherwise every course group of that school.
+- **Ateneo / Fondazione** → their own groups.
+- **The same notice published twice** (different link, same title and same attachment links) reaches a group only once. If the attachment numbers differ (`scarica_allegato/N`), both are sent.
+
 ### Message format
 
 The text of every message comes from `config/message.json`, the same for all groups:
@@ -323,7 +335,7 @@ Every 6 days (`KEEPALIVE_DAYS`) the bot writes a reminder with a short status in
 | Command                 | Description                                                             |
 | ----------------------- | ----------------------------------------------------------------------- |
 | `npm ci`                | Installs the dependencies exactly at the locked versions.               |
-| `npm test`              | Runs the 59 automated tests (modules, security, end-to-end flow).       |
+| `npm test`              | Runs the 64 automated tests (modules, security, end-to-end flow).       |
 | `npm run lint`          | Checks the code with ESLint.                                            |
 | `npm run format:check`  | Checks formatting with Prettier (`npm run format` fixes it).            |
 | `npm run check:sources` | Checks every board live and reports the empty or unreachable ones.      |
@@ -497,7 +509,7 @@ From the phone with the **bot's WhatsApp Business account**, preferably before l
 
 </details>
 
-No groups are needed for the schools: their notices already reach all their courses.
+School groups are optional: with a school group, school notices go only there; without one, they reach every course group of that school. Group names for schools, Ateneo and Fondazione: `Scuola di Medicina e Chirurgia`, `Scuola di Farmacia e Nutraceutica`, `Dipartimento DiGES`, `Ateneo UMG - Avvisi Generali`, `Fondazione UMG - Avvisi Generali` (the last two come from the optional `group` field in `sources.json`, which sets the group name when it differs from the board name).
 
 ### Link the bot
 

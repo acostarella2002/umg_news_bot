@@ -2,7 +2,7 @@
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
 import { openDb, listMappings, getKv, upsertNotices, mapGroup } from '../src/db.js'; // storage
-import { handleCommand, isSelfChat, textOf, normalizeName, autoLink } from '../src/whatsapp/commands.js'; // module under test
+import { handleCommand, isSelfChat, textOf, normalizeName, autoLink, asId } from '../src/whatsapp/commands.js'; // module under test
 
 const user = { id: '393330000000:5@s.whatsapp.net', lid: '123456:5@lid' }; // the bot account (fake number)
 const names = new Map([
@@ -63,10 +63,16 @@ test('misc commands', async () => {
   assert.equal(getKv(db, 'paused'), '0'); // flag cleared
   upsertNotices(db, 'giuri', [{ url: 'https://diges.unicz.it/avviso/1', title: 'Lezione', body: 'x' }], true); // a notice
   assert.match(await handleCommand('!test giuri', ctx), /Anteprima[\s\S]*Lezione/); // preview text
-  assert.match(await handleCommand('!prova nope', ctx), /Uso: !prova/); // unknown target
+  assert.match(await handleCommand('!test <Giuri>.', ctx), /Anteprima/); // brackets, final dot and capital letter tolerated
+  assert.match(await handleCommand('!test', ctx), /Uso: !test/); // missing target
+  assert.match(await handleCommand('!test\u200bgiuri', ctx), /Anteprima/); // zero-width space between command and target
+  assert.match(await handleCommand('!test gi\u00adx', ctx), /ricevuto: gi\[U\+AD\]x/); // invisible characters spelled out
+  assert.match(await handleCommand('!prova nope', ctx), /Target sconosciuto: nope/); // unknown target
   assert.match(await handleCommand('!prova', ctx), /Niente da mettere in coda/); // no mapping yet
   mapGroup(db, 'giuri', '1@g.us'); // link a group
   assert.match(await handleCommand('!prova giuri', ctx), /1 messaggi di prova in coda/); // queued
+  assert.match(await handleCommand('!svuota', ctx), /Coda svuotata: 1 messaggi annullati/); // the !prova message is dropped
+  assert.match(await handleCommand('!stato', ctx), /In coda: 0/); // empty queue
   assert.match(await handleCommand('!stato', ctx), /Invii: ▶️ attivi/); // status text
   assert.match(await handleCommand('!xyz', ctx), /sconosciuto/); // unknown command
 });
@@ -107,6 +113,13 @@ test('!dissocia accepts targets that are only in the mapping', async () => {
   assert.match(await handleCommand('!dissocia 111-1@g.us vecchio_corso', ctx), /Scollegato/); // allowed
   assert.equal(listMappings(db).length, 0); // gone
   assert.match(await handleCommand('!associa 111-1@g.us vecchio_corso', ctx), /sconosciuti/); // unknown for new links
+});
+
+// Ids typed on a phone keep only [a-z0-9_].
+test('asId', () => {
+  assert.equal(asId('<Infermieristica>.'), 'infermieristica'); // brackets copied from the help, final dot
+  assert.equal(asId('farmacia\u200b'), 'farmacia'); // zero-width space from the keyboard
+  assert.equal(asId(undefined), ''); // missing argument
 });
 
 // Names typed on a phone match the sources.json names regardless of case, accents, apostrophe style and spaces.

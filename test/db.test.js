@@ -89,6 +89,39 @@ test('queueLatest sends the newest notice once per group', () => {
   assert.equal(db.queueLatest(d, 'fisioterapia'), 0); // unmapped target
 });
 
+// !svuota drops the whole queue, also messages still waiting for their body.
+test('skipPending empties the queue', () => {
+  const d = db.openDb(':memory:'); // fresh DB
+  db.mapGroup(d, 'infermieristica', 'g@g.us'); // mapping first
+  db.upsertNotices(d, 'infermieristica', [n(1, { body: 'a' }), n(2)], true); // one ready, one waiting for its body
+  assert.equal(db.pendingDeliveries(d).length, 1); // only the ready one is visible to the sender
+  assert.equal(db.skipPending(d), 2); // both dropped
+  db.saveDetail(d, n(2).url, { body: 'b', attachments: [] }); // body arrives later
+  assert.equal(db.pendingDeliveries(d).length, 0); // still dropped
+  assert.equal(db.sentLastHour(d) + db.failedLastDay(d), 0); // not counted as sent or failed
+});
+
+// Same title and attachments under another URL = duplicate; another attachment number = a different notice.
+test('sentTwin', () => {
+  const d = db.openDb(':memory:'); // fresh DB
+  const pdf = (id) => [{ name: 'x.pdf', url: `https://medicina.unicz.it/scarica_allegato/${id}` }]; // attachment link
+  db.upsertNotices(
+    d,
+    'infermieristica',
+    [
+      n(1, { title: 'Lezione  SPOSTATA', attachments: pdf(5) }),
+      n(2, { title: 'lezione spostata', attachments: pdf(5) }),
+      n(3, { title: 'Lezione spostata', attachments: pdf(6) }),
+    ],
+    true,
+  ); // same title
+  assert.equal(db.sentTwin(d, n(2).url, 'g@g.us'), false); // nothing sent yet
+  db.recordDelivery(d, n(1).url, 'g@g.us', 'sent'); // first one sent
+  assert.equal(db.sentTwin(d, n(2).url, 'g@g.us'), true); // same title and attachment: duplicate
+  assert.equal(db.sentTwin(d, n(3).url, 'g@g.us'), false); // other attachment number: new notice
+  assert.equal(db.sentTwin(d, n(2).url, 'other@g.us'), false); // other group never got it
+});
+
 test('kv round trip', () => {
   const d = db.openDb(':memory:'); // fresh DB
   assert.equal(db.getKv(d, 'x'), null); // missing key

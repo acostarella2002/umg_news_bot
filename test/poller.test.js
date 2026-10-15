@@ -25,6 +25,8 @@ const fakeFetch = (pages) => async (url) => {
 test('buildJobs fans school notices out to its courses', () => {
   const school = buildJobs(sources).find((j) => j.url.endsWith('/avvisi') && !j.url.includes('corso_studio')); // school job
   assert.deepEqual(school.targets, ['diges', 'giuri']); // school + course
+  const own = buildJobs(sources, (id) => id === 'diges').find((j) => j.url === school.url); // the school has its own group
+  assert.deepEqual(own.targets, ['diges']); // no fan-out to the courses
 });
 
 // First poll seeds silently; second poll notifies only the new notice and fetches its detail.

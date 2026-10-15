@@ -1,5 +1,5 @@
 // Delivery queue: sends pending notices to their WhatsApp groups slowly and safely.
-import { pendingDeliveries, recordDelivery, sentLastHour, getNotice, getKv } from '../db.js'; // storage
+import { pendingDeliveries, recordDelivery, sentLastHour, getNotice, getKv, sentTwin } from '../db.js'; // storage
 import { formatNotice } from './format.js'; // message text
 import { redact } from '../redact.js'; // log scrubbing
 
@@ -33,6 +33,10 @@ export function createSender({ db, getSock, names, cfg, log = {}, sleep = wait, 
       recordDelivery(db, next.url, next.jid, 'failed');
       return 'failed';
     } // never message individual people
+    if (sentTwin(db, next.url, next.jid)) {
+      recordDelivery(db, next.url, next.jid, 'duplicate'); // same title and attachments already sent to this group
+      return 'duplicate';
+    }
     try {
       const text = formatNotice(getNotice(db, next.url), names.get(next.target) ?? next.target); // build the message
       await sock.sendPresenceUpdate('composing', next.jid); // "typing…" like a human
@@ -57,7 +61,7 @@ export function createSender({ db, getSock, names, cfg, log = {}, sleep = wait, 
   async function run(signal) {
     while (!signal?.aborted) {
       const r = await sendNext(); // one step
-      await sleep(r === 'sent' || r === 'error' ? between() : 30_000); // pace the loop; a failure costs one normal gap
+      await sleep(r === 'sent' || r === 'error' ? between() : r === 'duplicate' ? 0 : 30_000); // pace the loop; a failure costs one normal gap, a skipped duplicate none
     }
   }
 

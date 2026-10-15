@@ -1,7 +1,19 @@
 // Owner commands, accepted ONLY in the bot account's own "Message yourself" chat.
 // Whoever holds the primary phone owns the bot: no phone numbers or hashes need to be stored.
 import { normalizeMessageContent } from '@whiskeysockets/baileys'; // unwraps disappearing / view-once / edited wrappers
-import { getKv, setKv, mapGroup, unmapGroup, listMappings, latestNotices, pendingDeliveries, sentLastHour, failedLastDay, queueLatest } from '../db.js'; // storage
+import {
+  getKv,
+  setKv,
+  mapGroup,
+  unmapGroup,
+  listMappings,
+  latestNotices,
+  pendingDeliveries,
+  sentLastHour,
+  failedLastDay,
+  queueLatest,
+  skipPending,
+} from '../db.js'; // storage
 import { formatNotice } from './format.js'; // preview rendering
 
 // "39333…:12@s.whatsapp.net" -> "39333…@s.whatsapp.net" (drop device suffix).
@@ -29,6 +41,15 @@ export const normalizeName = (s) =>
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+
+// Target id typed on a phone: lowercase, keeping only id characters (drops "<…>", a final ".", invisible characters).
+export const asId = (s) =>
+  String(s ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '');
+
+// Show a typed argument with invisible/non-ASCII characters spelled out ("a[U+200B]b"), to diagnose phone keyboards.
+const shown = (s) => [...String(s ?? '')].map((c) => (/[\x21-\x7e]/.test(c) ? c : `[U+${c.codePointAt(0).toString(16).toUpperCase()}]`)).join('');
 
 // Link every course without a group to the group named exactly like the course in sources.json.
 // force = false (automatic run at connection): each course is auto-linked only once, so a later !dissocia is respected.
@@ -72,7 +93,7 @@ export const autoLinkReport = (r) =>
 const HELP = [
   '🤖 *Comandi UMG News Bot*',
   '!stato – stato del bot',
-  '!autoassocia – collega ogni corso al gruppo con lo stesso nome',
+  '!autoassocia – collega ogni corso/scuola/feed al gruppo con lo stesso nome',
   '!gruppi – elenca i gruppi in cui è il bot (numerati)',
   '!target [filtro] – elenca gli id di corsi/scuole/feed',
   '!associa <n|jid> <target> [target…] – collega un gruppo',
@@ -81,13 +102,14 @@ const HELP = [
   "!test <target> – anteprima dell'ultimo avviso (solo qui)",
   "!prova [target] – invia nei gruppi l'ultimo avviso di ogni corso collegato (o di uno)",
   '!pausa / !riprendi – ferma o riprende gli invii',
+  '!svuota – annulla tutti i messaggi in coda (gli avvisi restano nel feed RSS)',
 ].join('\n'); // one command per line
 
 // Handle one command; returns the reply text (null when the text is not a command).
 // state.groups caches the last !gruppi listing so groups can be referenced by number.
 export async function handleCommand(text, { db, sock, names, state, courses = new Map() }) {
   if (!text.startsWith('!')) return null; // replies of the bot never start with "!"
-  const [raw, ...args] = text.trim().split(/\s+/); // command + arguments
+  const [raw, ...args] = text.trim().split(/[\s\u200b-\u200d\u2060\ufeff]+/); // command + arguments; zero-width characters from phone keyboards count as spaces
   const cmd = raw.toLowerCase(); // phones auto-capitalise the first letter ("!Associa")
   // Resolve "3" (index from !gruppi) or a raw group JID; only group JIDs are accepted.
   const groupArg = (a) => (/^\d{1,3}$/.test(a) ? state.groups?.[Number(a) - 1]?.id : a)?.match(/^[\d-]+@g\.us$/)?.[0]; // undefined if invalid
@@ -128,11 +150,11 @@ export async function handleCommand(text, { db, sock, names, state, courses = ne
     case '!associa':
     case '!dissocia': {
       const jid = groupArg(args[0] ?? ''); // group to (un)map
-      const targets = args.slice(1).map((t) => t.toLowerCase()); // ids are always lowercase
+      const targets = args.slice(1).map(asId).filter(Boolean); // ids are always lowercase
       if (!jid || !targets.length) return `Uso: ${cmd} <n|jid> <target> [target…] (prima usa !gruppi)`; // usage
       const linked = new Set(listMappings(db).flatMap((m) => (m.jid === jid ? [m.target] : []))); // current links of this group
       const bad = targets.filter((t) => !names.has(t) && !(cmd === '!dissocia' && linked.has(t))); // a course removed from sources.json can still be unlinked
-      if (bad.length) return `Target sconosciuti: ${bad.join(', ')} (vedi !target)`; // refuse typos
+      if (bad.length) return `Target sconosciuti: ${bad.join(', ')} (ricevuto: ${args.slice(1).map(shown).join(' ')}; vedi !target)`; // refuse typos
       if (cmd === '!dissocia') {
         for (const t of targets) unmapGroup(db, t, jid); // works even if the bot already left the group
         return `✅ Scollegato: ${targets.join(', ')}`; // confirmation
@@ -150,19 +172,22 @@ export async function handleCommand(text, { db, sock, names, state, courses = ne
       return rows.map((m) => `${m.target} → ${groups.get(m.jid)?.subject ?? '⚠️ bot non più nel gruppo'}\n   ${m.jid}`).join('\n'); // mapping table
     }
     case '!test': {
-      const target = args[0]?.toLowerCase(); // board id
-      if (!names.has(target)) return 'Uso: !test <target> (vedi !target)'; // validation
+      const target = asId(args[0]); // board id
+      if (!names.has(target))
+        return target ? `Target sconosciuto: ${target} (ricevuto: ${shown(args[0])}; vedi !target)` : 'Uso: !test <target>, es. !test farmacia'; // validation
       const [n] = latestNotices(db, target, 1); // newest notice
       return n ? `🧪 Anteprima:\n\n${formatNotice(n, names.get(target))}` : 'Nessun avviso per questo target.'; // preview only in self chat
     }
     case '!prova': {
-      const target = args[0]?.toLowerCase(); // optional single board
-      if (target && !names.has(target)) return 'Uso: !prova [target] (vedi !target)'; // validation
+      const target = asId(args[0]); // optional single board
+      if (target && !names.has(target)) return `Target sconosciuto: ${target} (ricevuto: ${shown(args[0])}; vedi !target)`; // validation
       const n = queueLatest(db, target); // goes through the normal queue: pauses, hourly cap, retries
       return n
         ? `🧪 ${n} messaggi di prova in coda. Partono a ritmo anti-ban (con più di 10 in coda, uno ogni 2–3 minuti). Segui con !stato, ferma con !pausa.`
         : 'Niente da mettere in coda: nessun collegamento, nessun avviso, o già inviato.';
     }
+    case '!svuota':
+      return `🗑️ Coda svuotata: ${skipPending(db)} messaggi annullati. Gli avvisi nuovi da ora in poi verranno inviati normalmente.`; // emergency clean-up
     case '!pausa':
       setKv(db, 'paused', '1'); // stop the sender
       return '⏸️ Invii in pausa.';

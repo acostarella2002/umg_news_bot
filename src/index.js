@@ -17,6 +17,8 @@ const names = new Map(
     .filter((f) => f.id !== 'all')
     .map((f) => [f.id, f.name]),
 ); // target id -> display name
+// Exact WhatsApp group name per target, for !autoassocia: the display name, or the optional "group" field of sources.json.
+const groupNames = new Map([...names, ...[...sources.courses, ...sources.schools, ...sources.feeds].filter((s) => s.group).map((s) => [s.id, s.group])]);
 
 // RSS server, with /health checking data folder, polls and WhatsApp (read by the Docker HEALTHCHECK).
 const startedAt = new Date().toISOString(); // grace period before the first poll completes
@@ -47,18 +49,17 @@ if (config.waEnabled) {
   const { handleCommand, textOf, autoLink, autoLinkReport } = await import('./whatsapp/commands.js'); // owner commands
   const { keepaliveTick, selfJid } = await import('./whatsapp/keepalive.js'); // weekly reminder
   const state = {}; // command session state (last !gruppi listing)
-  const courses = new Map(sources.courses.map((c) => [c.id, c.name])); // course id -> exact group name expected
   const wa = startWhatsApp({
     authDir: join(config.dataDir, 'wa-auth'), // session folder
     pairingNumber: config.waPairingNumber, // bot's own number for the pairing code
     log, // logger
     onMessage: async (msg, sock) => {
-      const reply = await handleCommand(textOf(msg), { db, sock, names, state, courses }); // run command
+      const reply = await handleCommand(textOf(msg), { db, sock, names, state, courses: groupNames }); // run command; every target can be auto-linked
       if (reply) await sock.sendMessage(selfJid(sock.user), { text: reply }); // answer in the self chat only
     },
-    // On every connection: link courses to the groups named like them (once per course), then tell the owner.
+    // On every connection: link targets to the groups named like them (once per target), then tell the owner.
     onOpen: async (sock) => {
-      const r = await autoLink({ db, sock, courses, force: false }); // first-time links only
+      const r = await autoLink({ db, sock, courses: groupNames, force: false }); // first-time links only
       if (r.linked.length) await sock.sendMessage(selfJid(sock.user), { text: autoLinkReport(r) }); // silent when nothing changed
     },
   });

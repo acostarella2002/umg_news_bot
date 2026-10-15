@@ -204,17 +204,34 @@
     { "id": "diges", "name": "Dipartimento DiGES", "url": "https://diges.unicz.it/avvisi" }
   ],
   "feeds": [
-    { "id": "ateneo", "name": "Ateneo UMG - Bacheca Studenti", "url": "https://web.unicz.it/it/category/bacheca-studenti/10/rss" },
-    { "id": "ateneo", "name": "Ateneo UMG - Segreteria Studenti", "url": "https://web.unicz.it/it/category/segreteria-studenti/10/rss" },
-    { "id": "ateneo", "name": "Ateneo UMG - Avvisi Generali", "url": "https://web.unicz.it/it/category/avvisi-generali/10/rss" },
+    {
+      "id": "ateneo",
+      "name": "Ateneo UMG - Bacheca Studenti",
+      "group": "Ateneo UMG - Avvisi Generali",
+      "url": "https://web.unicz.it/it/category/bacheca-studenti/10/rss"
+    },
+    {
+      "id": "ateneo",
+      "name": "Ateneo UMG - Segreteria Studenti",
+      "group": "Ateneo UMG - Avvisi Generali",
+      "url": "https://web.unicz.it/it/category/segreteria-studenti/10/rss"
+    },
+    {
+      "id": "ateneo",
+      "name": "Ateneo UMG - Avvisi Generali",
+      "group": "Ateneo UMG - Avvisi Generali",
+      "url": "https://web.unicz.it/it/category/avvisi-generali/10/rss"
+    },
     {
       "id": "fondazione",
       "name": "Fondazione UMG - Bandi",
+      "group": "Fondazione UMG - Avvisi Generali",
       "url": "https://www.fondazioneumg.it/servizi/feed/ExpRSS_servizio.aspx?tabellaservizio=T_bandi%7ccampo=bandi_categoria%7ctitle=Fondazione+Universit%c3%a0+Magna+Graecia+-+Bandi%7cfiltrocampi="
     },
     {
       "id": "fondazione",
       "name": "Fondazione UMG - Notizie",
+      "group": "Fondazione UMG - Avvisi Generali",
       "url": "https://www.fondazioneumg.it/servizi/feed/ExpRSS_servizio.aspx?tabellaservizio=T_notizie%7ccampo=Categoria_Notizie%7ctitle=Fondazione+Universit%c3%a0+Magna+Graecia+-+Notizie%7cfiltrocampi="
     }
   ]

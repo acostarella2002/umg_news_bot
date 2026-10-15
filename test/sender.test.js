@@ -118,3 +118,21 @@ test('refuses to message individuals', async () => {
   assert.equal(await s.sendNext(), 'failed'); // refused
   assert.equal(sock.calls.length, 0); // nothing sent at all
 });
+
+// The same notice published twice (other URL, same title and attachments) reaches a group only once.
+test('skips duplicates without waiting', async () => {
+  const db = openDb(':memory:'); // fresh DB
+  mapGroup(db, 'giuri', 'g@g.us'); // mapping first
+  upsertNotices(
+    db,
+    'giuri',
+    ['1', '2'].map((i) => ({ url: `https://diges.unicz.it/avviso/${i}`, title: 'Lezione spostata', body: 'b' })),
+    true,
+  ); // twins
+  const sock = fakeSock(); // working socket
+  const s = createSender({ db, getSock: () => sock, names: new Map(), cfg, sleep: async () => {} }); // no real waiting
+  assert.equal(await s.sendNext(), 'sent'); // first copy
+  assert.equal(await s.sendNext(), 'duplicate'); // second copy dropped
+  assert.equal(await s.sendNext(), 'idle'); // queue empty
+  assert.equal(sock.calls.filter((c) => c[0] === 'msg').length, 1); // one message only
+});

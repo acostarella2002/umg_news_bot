@@ -6,6 +6,13 @@ import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers, fetchL
 import { ownerCommands } from './commands.js'; // self-chat filter
 import { redact } from '../redact.js'; // log scrubbing
 
+// libsignal (inside Baileys) prints whole Signal sessions, private keys included, with console.info/warn: never let them reach the logs.
+export const isSignalNoise = (first) => typeof first === 'string' && /session|prekey|bucket/i.test(first); // "Closing session:", "Opening session:"…
+for (const k of ['info', 'warn']) {
+  const orig = console[k].bind(console); // original writer
+  console[k] = (...a) => (isSignalNoise(a[0]) ? undefined : orig(...a)); // our own logs go through pino, not console
+}
+
 // Pause after another instance took the session over: never ping-pong with it, but recover alone once it is gone.
 const REPLACED_PAUSE_MS = 15 * 60_000;
 

@@ -9,5 +9,5 @@
   ],
   "lines": ["*📢{titolo}*", "", "{testo}", "", "{link}", "", "*#PrimaveraStudentescaUMG*🌸"],
   "attachment": "• {nome}: {url}",
-  "maxBody": 700
+  "maxBody": 2000
 }
