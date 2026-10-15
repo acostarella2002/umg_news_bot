@@ -484,6 +484,7 @@ From the phone with the **bot's WhatsApp Business account**, preferably before l
 | Ingegneria Biomedica (LM)                                                  | `ing_biomedica`                       | Scuola di Medicina e Chirurgia    |
 | Medicina e Chirurgia                                                       | `medicina_chirurgia`                  | Scuola di Medicina e Chirurgia    |
 | Medicina e Chirurgia TD                                                    | `medicina_chirurgia_td`               | Scuola di Medicina e Chirurgia    |
+| Semestre Filtro                                                            | `semestre_filtro`                     | Scuola di Medicina e Chirurgia    |
 | Odontoiatria e Protesi Dentaria                                            | `odontoiatria`                        | Scuola di Medicina e Chirurgia    |
 | Psicologia Cognitiva e Neuroscienze (LM)                                   | `psicologia_cognitiva_neuroscienze`   | Scuola di Medicina e Chirurgia    |
 | Psicologia Forense e Criminologica (LM)                                    | `psicologia_forense`                  | Scuola di Medicina e Chirurgia    |

@@ -91,6 +91,12 @@
       "url": "https://medicina.unicz.it/corso_studio/medicina_chirurgia_interateneo/avvisi"
     },
     {
+      "id": "semestre_filtro",
+      "name": "Semestre Filtro",
+      "school": "medicina",
+      "url": "https://medicina.unicz.it/corso_studio/semestre_filtro/avvisi"
+    },
+    {
       "id": "odontoiatria",
       "name": "Odontoiatria e Protesi Dentaria",
       "school": "medicina",
