@@ -1,10 +1,10 @@
 // Unit tests for src/whatsapp/format.js.
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
-import { formatNotice, checkTemplate } from '../src/whatsapp/format.js'; // module under test
+import { formatNotice, validateTemplate } from '../src/whatsapp/format.js'; // module under test
 
 // A template using every placeholder (the layout used until 2026-10-14).
-const full = checkTemplate({
+const full = validateTemplate({
   lines: ['📢 *{bacheca}*', '*{titolo}*', '🗓️ {data}', '', '{testo}', '', '📎 *Allegati*\n{allegati}', '', '🔗 {link}'],
   attachment: '• {nome}: {url}',
   maxBody: 700,
@@ -52,11 +52,11 @@ test('formatNotice with the shipped template', () => {
 
 // A custom template is applied as written; typos in placeholders are rejected at startup.
 test('formatNotice with a custom template', () => {
-  const t = checkTemplate({ lines: ['{titolo} ({bacheca})', '{data}', '{link}'], attachment: '{nome}', maxBody: 10 }); // minimal template
+  const t = validateTemplate({ lines: ['{titolo} ({bacheca})', '{data}', '{link}'], attachment: '{nome}', maxBody: 10 }); // minimal template
   assert.equal(
     formatNotice({ url: 'https://x.unicz.it/1', title: 'T {link}', published: null, body: '', attachments: [] }, 'B', t),
     'T {link} (B)\nhttps://x.unicz.it/1',
   ); // no date line, values not re-expanded
-  assert.throws(() => checkTemplate({ lines: ['{titlo}'], attachment: '', maxBody: 1 }), /unknown placeholders \{titlo\}/); // typo
-  assert.throws(() => checkTemplate({ lines: 'x' }), /needs lines/); // wrong shape
+  assert.throws(() => validateTemplate({ lines: ['{titlo}'], attachment: '', maxBody: 1 }), /unknown placeholders \{titlo\}/); // typo
+  assert.throws(() => validateTemplate({ lines: 'x' }), /needs lines/); // wrong shape
 });

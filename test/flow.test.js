@@ -57,7 +57,7 @@ test('a new notice reaches exactly the linked groups, once each', async () => {
   await pollOnce({ db, sources, fetchText, log: {} }); // first run: silent seed
 
   // Owner links the groups from the self chat (sorted list: 1 Bacheca, 2 Economia, 3 Giurisprudenza).
-  const ctx = { db, sock, names, state: {} }; // command context
+  const ctx = { db, sock, targetNames: names, session: {} }; // command context
   await handleCommand('!gruppi', ctx);
   assert.match(await handleCommand('!Associa 3 giuri', ctx), /Collegato a "Giurisprudenza"/); // auto-capitalised by the phone
   assert.match(await handleCommand('!associa 2 economia', ctx), /Collegato a "Economia"/);
@@ -76,10 +76,10 @@ test('a new notice reaches exactly the linked groups, once each', async () => {
   assert.equal(s.errors, 0); // every board read
   assert.equal(s.details, 3); // CMS bodies fetched (the RSS item already has one)
 
-  const cfg = { sendMinDelayS: 1, sendMaxDelayS: 1, maxSendsPerHour: 40 }; // pacing irrelevant here
-  const sender = createSender({ db, getSock: () => sock, names, cfg, sleep: async () => {} }); // no real waiting
-  while ((await sender.sendNext()) === 'sent'); // drain the queue
-  assert.equal(await sender.sendNext(), 'idle'); // nothing left
+  const senderConfig = { sendMinDelayS: 1, sendMaxDelayS: 1, maxSendsPerHour: 40 }; // pacing irrelevant here
+  const sender = createSender({ db, getSocket: () => sock, targetNames: names, config: senderConfig, sleep: async () => {} }); // no real waiting
+  while ((await sender.sendNextMessage()) === 'sent'); // drain the queue
+  assert.equal(await sender.sendNextMessage(), 'idle'); // nothing left
 
   const got = sent.map(([jid, text]) => `${jid} ${text.match(/https:\/\/\S+/)[0]}`).sort(); // group, notice link
   assert.deepEqual(got, [

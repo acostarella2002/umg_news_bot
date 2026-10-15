@@ -3,9 +3,9 @@ import { test, before, after } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
 import * as cheerio from 'cheerio'; // used to check the produced XML parses
 import { tmpdir } from 'node:os'; // a surely writable folder
-import { openDb, upsertNotices, setKv } from '../src/db.js'; // storage
+import { openDb, upsertNotices, setStateValue } from '../src/db.js'; // storage
 import { xmlEscape } from '../src/rss.js'; // escaping helper
-import { makeServer, healthOf } from '../src/server.js'; // module under test
+import { createRssServer, computeHealth } from '../src/server.js'; // module under test
 
 // Sources with one course and two feeds sharing the same id.
 const sources = {
@@ -35,7 +35,7 @@ before(async () => {
     ],
     true,
   ); // special chars
-  server = makeServer({ db, sources, baseUrl: 'https://feeds.example' }).listen(0); // random port
+  server = createRssServer({ db, sources, baseUrl: 'https://feeds.example' }).listen(0); // random port
   await new Promise((r) => server.once('listening', r)); // wait until bound
   base = `http://127.0.0.1:${server.address().port}`; // local URL
 });
@@ -76,22 +76,22 @@ test('rejects unknown paths and methods', async () => {
 });
 
 // Health turns false when the data folder, the polls or WhatsApp need a human.
-test('healthOf', () => {
+test('computeHealth', () => {
   const db = openDb(':memory:'); // fresh DB
   const t0 = Date.parse('2026-10-10T10:00:00Z'); // fixed clock
   const base = { db, dataDir: tmpdir(), pollMinutes: 15, startedAt: new Date(t0).toISOString(), whatsapp: 'connected' }; // healthy setup
-  assert.equal(healthOf({ ...base, now: t0 + 60_000 }).ok, true); // just started, no poll yet: grace period
-  assert.equal(healthOf({ ...base, now: t0 + 46 * 60_000 }).pollsRunning, false); // no poll for 3 cycles
-  setKv(db, 'last_poll', new Date(t0 + 45 * 60_000).toISOString()); // a poll completed
-  assert.equal(healthOf({ ...base, now: t0 + 46 * 60_000 }).ok, true); // healthy again
-  assert.equal(healthOf({ ...base, now: t0 + 46 * 60_000, dataDir: './no/such/folder' }).dataWritable, false); // data folder missing
-  for (const whatsapp of ['logged_out', 'replaced']) assert.equal(healthOf({ ...base, now: t0 + 46 * 60_000, whatsapp }).ok, false); // needs a relink / a stray instance
-  for (const whatsapp of ['reconnecting', 'error', 'disabled']) assert.equal(healthOf({ ...base, now: t0 + 46 * 60_000, whatsapp }).ok, true); // recovers by itself
+  assert.equal(computeHealth({ ...base, now: t0 + 60_000 }).ok, true); // just started, no poll yet: grace period
+  assert.equal(computeHealth({ ...base, now: t0 + 46 * 60_000 }).pollsRunning, false); // no poll for 3 cycles
+  setStateValue(db, 'last_poll', new Date(t0 + 45 * 60_000).toISOString()); // a poll completed
+  assert.equal(computeHealth({ ...base, now: t0 + 46 * 60_000 }).ok, true); // healthy again
+  assert.equal(computeHealth({ ...base, now: t0 + 46 * 60_000, dataDir: './no/such/folder' }).dataWritable, false); // data folder missing
+  for (const whatsapp of ['logged_out', 'replaced']) assert.equal(computeHealth({ ...base, now: t0 + 46 * 60_000, whatsapp }).ok, false); // needs a relink / a stray instance
+  for (const whatsapp of ['reconnecting', 'error', 'disabled']) assert.equal(computeHealth({ ...base, now: t0 + 46 * 60_000, whatsapp }).ok, true); // recovers by itself
 });
 
 // An unhealthy status is served as 503, which Docker reads as "unhealthy".
 test('GET /health returns 503 when not ok', async () => {
-  const s = makeServer({ db: openDb(':memory:'), sources, baseUrl: 'x', health: () => ({ ok: false, whatsapp: 'replaced' }) }).listen(0); // failing health
+  const s = createRssServer({ db: openDb(':memory:'), sources, baseUrl: 'x', health: () => ({ ok: false, whatsapp: 'replaced' }) }).listen(0); // failing health
   await new Promise((r) => s.once('listening', r)); // wait until bound
   const r = await fetch(`http://127.0.0.1:${s.address().port}/health`); // request
   assert.equal(r.status, 503); // unhealthy

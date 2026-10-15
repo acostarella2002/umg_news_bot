@@ -1,7 +1,7 @@
 // Unit tests for src/poller.js with a fake fetcher (no network).
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
-import { openDb, pendingDeliveries, mapGroup, getNotice } from '../src/db.js'; // storage helpers
+import { openDb, pendingDeliveries, linkGroup, getNotice } from '../src/db.js'; // storage helpers
 import { pollOnce, buildJobs } from '../src/poller.js'; // module under test
 
 // Tiny source set: one course, one school, one feed.
@@ -40,7 +40,7 @@ test('pollOnce seeds then notifies new notices', async () => {
   };
   const s1 = await pollOnce({ db, sources, fetchText: fakeFetch(pages), log: {} }); // first run
   assert.deepEqual(s1, { sources: 3, errors: 0, added: 1, details: 0 }); // seeded, no detail fetched
-  mapGroup(db, 'giuri', 'g@g.us'); // admin maps a group
+  linkGroup(db, 'giuri', 'g@g.us'); // admin maps a group
   pages[sources.courses[0].url] = `<table>${row(2, 'Nuovo')}${row(1, 'Vecchio')}</table>`; // a new notice appears
   const s2 = await pollOnce({ db, sources, fetchText: fakeFetch(pages), log: {} }); // second run
   assert.equal(s2.added, 1); // one new notice
@@ -69,7 +69,7 @@ test('pollOnce guards against floods', async () => {
   const old = (id) => row(id, `T${id}`).replaceAll('08/10/2026', '08/10/2020'); // a notice published years ago
   const rows = (from, n) => Array.from({ length: n }, (_, i) => old(from + i)).join(''); // n old table rows
   const course = sources.courses[0].url; // the board under test
-  mapGroup(db, 'giuri', 'g@g.us'); // group linked before anything is read
+  linkGroup(db, 'giuri', 'g@g.us'); // group linked before anything is read
   const pages = { [course]: '<html>manutenzione</html>', [sources.schools[0].url]: '<html></html>', [sources.feeds[0].url]: '<rss></rss>' }; // maintenance page
   await pollOnce({ db, sources, fetchText: fakeFetch(pages), log }); // empty first read
   pages[course] = `<table>${rows(1, 30)}</table>`; // the real history appears
@@ -95,7 +95,7 @@ test('pollOnce queues a real burst of recent notices', async () => {
   const course = sources.courses[0].url; // the board under test
   const pages = { [course]: `<table>${row(1, 'Vecchio')}</table>`, [sources.schools[0].url]: '<html></html>', [sources.feeds[0].url]: '<rss></rss>' }; // seed
   await pollOnce({ db, sources, fetchText: fakeFetch(pages), log: {} }); // seed
-  mapGroup(db, 'giuri', 'g@g.us'); // group linked
+  linkGroup(db, 'giuri', 'g@g.us'); // group linked
   const burst = Array.from({ length: 15 }, (_, i) => recent(300 + i)).join(''); // 15 notices published today
   const stale = row(400, 'Ripubblicato').replaceAll('08/10/2026', '01/01/2020'); // an old one re-listed in the same read
   pages[course] = `<table>${burst}${stale}${row(1, 'Vecchio')}</table>`;

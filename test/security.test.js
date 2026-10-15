@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'; // strict assertions
 import { readFileSync } from 'node:fs'; // static source checks
 import pino from 'pino'; // real logger, captured into memory
 import { openDb, upsertNotices } from '../src/db.js'; // storage
-import { ownerCommands, handleCommand } from '../src/whatsapp/commands.js'; // command filter + handler
+import { filterOwnerCommands, handleCommand } from '../src/whatsapp/commands.js'; // command filter + handler
 import { createSender } from '../src/whatsapp/sender.js'; // delivery queue
 
 const BOT = { id: '393330000000:5@s.whatsapp.net', lid: '123456:5@lid' }; // the bot account (fake number)
@@ -18,7 +18,7 @@ const msg = (remoteJid, fromMe, text, ts = now, participant) => ({
 });
 
 // Only fresh messages written by the account in its own chat pass the filter.
-test('ownerCommands drops everything that is not the owner self chat', () => {
+test('filterOwnerCommands drops everything that is not the owner self chat', () => {
   const batch = [
     msg(`${STUDENT}@s.whatsapp.net`, false, '!pausa'), // student DM trying a command
     msg('111-1@g.us', false, '!associa 1 giuri', now, `${STUDENT}@s.whatsapp.net`), // student in a group trying a command
@@ -27,7 +27,7 @@ test('ownerCommands drops everything that is not the owner self chat', () => {
     msg('393330000000@s.whatsapp.net', true, '!stato', now - 600), // owner command but replayed history (10 min old)
     msg('393330000000@s.whatsapp.net', true, '!stato'), // the only valid one
   ];
-  const kept = ownerCommands(batch, BOT, now); // filter
+  const kept = filterOwnerCommands(batch, BOT, now); // filter
   assert.equal(kept.length, 1); // exactly one
   assert.equal(kept[0].message.conversation, '!stato'); // the owner's fresh command
 });
@@ -47,19 +47,19 @@ test('no personal data is persisted or logged', async () => {
       throw new Error(`send to ${'111-1@g.us'} failed`);
     }, // failure path also exercised
   };
-  const ctx = { db, sock, names: new Map([['giuri', 'Giurisprudenza']]), state: {} }; // command context
+  const ctx = { db, sock, targetNames: new Map([['giuri', 'Giurisprudenza']]), session: {} }; // command context
   await handleCommand('!gruppi', ctx); // reads groups (members included in the API response)
   await handleCommand('!associa 1 giuri', ctx); // maps the group
   upsertNotices(db, 'giuri', [{ url: 'https://diges.unicz.it/avviso/1', title: 'Lezione', body: 'x' }], true); // a notice to send
   const sender = createSender({
     db,
-    getSock: () => sock,
-    names: ctx.names,
-    cfg: { sendMinDelayS: 1, sendMaxDelayS: 1, maxSendsPerHour: 10 },
+    getSocket: () => sock,
+    targetNames: ctx.targetNames,
+    config: { sendMinDelayS: 1, sendMaxDelayS: 1, maxSendsPerHour: 10 },
     log,
     sleep: async () => {},
   }); // sender
-  await sender.sendNext(); // fails and logs
+  await sender.sendNextMessage(); // fails and logs
   // Dump every table to text and search for the student's data.
   const tables = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")

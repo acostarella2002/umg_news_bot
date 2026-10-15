@@ -2,17 +2,17 @@
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
 import { readFileSync } from 'node:fs'; // fixture loading
-import { romeToIso, htmlToText, parseList, parseDetail, parseRss } from '../src/parse.js'; // module under test
+import { romeLocalToIso, htmlToText, parseList, parseDetail, parseRss } from '../src/parse.js'; // module under test
 
 // Read a fixture file as UTF-8 text (latin1 for the Fondazione feed, as the fetcher would decode it).
 const fx = (name, enc = 'utf8') => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), enc);
 
 // Rome dates are converted with the correct DST offset.
-test('romeToIso handles summer and winter time', () => {
-  assert.equal(romeToIso('08/10/2026 18:57:04'), '2026-10-08T16:57:04.000Z'); // CEST = UTC+2
-  assert.equal(romeToIso('15/01/2026 10:00:00'), '2026-01-15T09:00:00.000Z'); // CET = UTC+1
-  assert.equal(romeToIso('06 Ottobre 2026'), '2026-10-05T22:00:00.000Z'); // Italian long form, midnight in Rome
-  assert.equal(romeToIso('nonsense'), null); // invalid input
+test('romeLocalToIso handles summer and winter time', () => {
+  assert.equal(romeLocalToIso('08/10/2026 18:57:04'), '2026-10-08T16:57:04.000Z'); // CEST = UTC+2
+  assert.equal(romeLocalToIso('15/01/2026 10:00:00'), '2026-01-15T09:00:00.000Z'); // CET = UTC+1
+  assert.equal(romeLocalToIso('06 Ottobre 2026'), '2026-10-05T22:00:00.000Z'); // Italian long form, midnight in Rome
+  assert.equal(romeLocalToIso('nonsense'), null); // invalid input
 });
 
 // HTML is flattened safely; scripts are removed and links become visible.

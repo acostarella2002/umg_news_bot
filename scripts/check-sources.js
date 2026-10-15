@@ -4,28 +4,28 @@ import { fetchText } from '../src/http.js'; // allowlisted fetcher
 import { parseList, parseRss } from '../src/parse.js'; // parsers
 
 // Build one flat list of [label, url, parser] entries.
-const jobs = [
-  ...sources.courses.map((c) => [`corso:${c.id}`, c.url, (h) => parseList(h, c.url)]), // course pages
-  ...sources.schools.map((s) => [`scuola:${s.id}`, s.url, (h) => parseList(h, s.url, ['avviso'])]), // school pages
-  ...sources.feeds.map((f) => [`feed:${f.name}`, f.url, parseRss]), // RSS feeds
+const checks = [
+  ...sources.courses.map((course) => [`corso:${course.id}`, course.url, (html) => parseList(html, course.url)]), // course pages
+  ...sources.schools.map((school) => [`scuola:${school.id}`, school.url, (html) => parseList(html, school.url, ['avviso'])]), // school pages
+  ...sources.feeds.map((feed) => [`feed:${feed.name}`, feed.url, parseRss]), // RSS feeds
 ];
 
-let failed = 0; // number of broken sources
-for (const [label, url, parse] of jobs) {
+let failedCount = 0; // number of broken sources
+for (const [label, url, parse] of checks) {
   try {
-    const items = parse(await fetchText(url)); // fetch + parse
-    const newest =
-      items
-        .map((i) => i.published)
+    const notices = parse(await fetchText(url)); // fetch + parse
+    const newestDate =
+      notices
+        .map((notice) => notice.published)
         .filter(Boolean)
         .sort()
         .at(-1) ?? '-'; // most recent date
-    const flag = items.length === 0 ? '  <-- EMPTY' : ''; // an empty board is suspicious
-    if (!items.length) failed++; // count it as a failure
-    console.log(`${label.padEnd(48)} ${String(items.length).padStart(5)}  ${newest.slice(0, 10)}${flag}`); // one line per source
+    const emptyFlag = notices.length === 0 ? '  <-- EMPTY' : ''; // an empty board is suspicious
+    if (!notices.length) failedCount++; // count it as a failure
+    console.log(`${label.padEnd(48)} ${String(notices.length).padStart(5)}  ${newestDate.slice(0, 10)}${emptyFlag}`); // one line per source
   } catch (err) {
-    failed++; // count network/HTTP errors
+    failedCount++; // count network/HTTP errors
     console.log(`${label.padEnd(48)} ERROR ${err.message}`); // show the reason
   }
 }
-process.exitCode = failed ? 1 : 0; // non-zero exit when something is broken
+process.exitCode = failedCount ? 1 : 0; // non-zero exit when something is broken

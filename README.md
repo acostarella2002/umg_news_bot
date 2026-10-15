@@ -344,8 +344,8 @@ Every 6 days (`KEEPALIVE_DAYS`) the bot writes a reminder with a short status in
 
 ```
 src/            application code (poller, parsers, database, server, WhatsApp)
-config/         sources.json, the list of notice boards
-scripts/        check tools (check-sources, poll-once)
+config/         sources.json (notice boards) and message.json (WhatsApp message format)
+scripts/        check tools (check-sources, poll-once) and deploy.ps1
 test/           automated tests and real pages saved as fixtures
 brain/          full technical documentation (Obsidian vault, in Italian)
 data/           database and WhatsApp session, created at startup (not versioned)

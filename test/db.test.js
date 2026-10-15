@@ -28,7 +28,7 @@ test('upsertNotices dedups and links targets', () => {
 test('pendingDeliveries respects seed flag and mapping time', () => {
   const d = db.openDb(':memory:'); // fresh DB
   db.upsertNotices(d, 'infermieristica', [n(1, { body: 'x' })], false); // seeded on first run
-  db.mapGroup(d, 'infermieristica', '123@g.us'); // group mapped after the seed
+  db.linkGroup(d, 'infermieristica', '123@g.us'); // group mapped after the seed
   db.upsertNotices(d, 'infermieristica', [n(2, { body: 'y' })], true); // genuinely new notice
   const p = db.pendingDeliveries(d); // what should be sent
   assert.deepEqual(
@@ -37,14 +37,14 @@ test('pendingDeliveries respects seed flag and mapping time', () => {
   ); // only the new one
   db.recordDelivery(d, n(2).url, '123@g.us', 'sent'); // mark as sent
   assert.equal(db.pendingDeliveries(d).length, 0); // nothing left
-  assert.equal(db.sentLastHour(d), 1); // rate counter sees it
+  assert.equal(db.countSentLastHour(d), 1); // rate counter sees it
 });
 
 // A notice linked to two targets mapped to the same group is sent once to that group.
 test('pendingDeliveries sends once per group', () => {
   const d = db.openDb(':memory:'); // fresh DB
-  db.mapGroup(d, 'medicina', 'g1@g.us'); // school target
-  db.mapGroup(d, 'infermieristica', 'g1@g.us'); // course target, same group
+  db.linkGroup(d, 'medicina', 'g1@g.us'); // school target
+  db.linkGroup(d, 'infermieristica', 'g1@g.us'); // course target, same group
   db.upsertNotices(d, 'medicina', [n(5, { body: '' })], true); // school notice
   db.upsertNotices(d, 'infermieristica', [n(5, { body: '' })], true); // also listed on the course
   assert.equal(db.pendingDeliveries(d).length, 1); // one message only
@@ -53,7 +53,7 @@ test('pendingDeliveries sends once per group', () => {
 // Notices without body wait for the detail page (but not forever).
 test('pendingDeliveries waits for detail body', () => {
   const d = db.openDb(':memory:'); // fresh DB
-  db.mapGroup(d, 'infermieristica', 'g@g.us'); // mapping first
+  db.linkGroup(d, 'infermieristica', 'g@g.us'); // mapping first
   db.upsertNotices(d, 'infermieristica', [n(7)], true); // body still NULL
   assert.equal(db.pendingDeliveries(d).length, 0); // held back
   assert.deepEqual(
@@ -67,13 +67,13 @@ test('pendingDeliveries waits for detail body', () => {
 
 // Key/value helpers round-trip strings.
 // !prova queues the newest (seeded) notice of each mapped course once, and waits for its body like normal notices.
-test('queueLatest sends the newest notice once per group', () => {
+test('queueLatestNoticePerGroup sends the newest notice once per group', () => {
   const d = db.openDb(':memory:'); // fresh DB
   db.upsertNotices(d, 'infermieristica', [n(1, { body: 'a' }), n(2, { published: '2026-10-09T10:00:00.000Z' })], false); // seeded history
-  db.mapGroup(d, 'infermieristica', 'g@g.us'); // mapped after the seed
+  db.linkGroup(d, 'infermieristica', 'g@g.us'); // mapped after the seed
   assert.equal(db.pendingDeliveries(d).length, 0); // nothing by itself
-  assert.equal(db.queueLatest(d), 1); // newest one queued
-  assert.equal(db.queueLatest(d), 0); // not twice
+  assert.equal(db.queueLatestNoticePerGroup(d), 1); // newest one queued
+  assert.equal(db.queueLatestNoticePerGroup(d), 0); // not twice
   assert.deepEqual(
     db.noticesNeedingDetail(d, 10).map((r) => r.url),
     [n(2).url],
@@ -85,24 +85,24 @@ test('queueLatest sends the newest notice once per group', () => {
     [n(2).url],
   ); // released
   db.recordDelivery(d, n(2).url, 'g@g.us', 'sent'); // sent
-  assert.equal(db.queueLatest(d), 0); // already delivered: not queued again
-  assert.equal(db.queueLatest(d, 'fisioterapia'), 0); // unmapped target
+  assert.equal(db.queueLatestNoticePerGroup(d), 0); // already delivered: not queued again
+  assert.equal(db.queueLatestNoticePerGroup(d, 'fisioterapia'), 0); // unmapped target
 });
 
 // !svuota drops the whole queue, also messages still waiting for their body.
-test('skipPending empties the queue', () => {
+test('cancelPendingDeliveries empties the queue', () => {
   const d = db.openDb(':memory:'); // fresh DB
-  db.mapGroup(d, 'infermieristica', 'g@g.us'); // mapping first
+  db.linkGroup(d, 'infermieristica', 'g@g.us'); // mapping first
   db.upsertNotices(d, 'infermieristica', [n(1, { body: 'a' }), n(2)], true); // one ready, one waiting for its body
   assert.equal(db.pendingDeliveries(d).length, 1); // only the ready one is visible to the sender
-  assert.equal(db.skipPending(d), 2); // both dropped
+  assert.equal(db.cancelPendingDeliveries(d), 2); // both dropped
   db.saveDetail(d, n(2).url, { body: 'b', attachments: [] }); // body arrives later
   assert.equal(db.pendingDeliveries(d).length, 0); // still dropped
-  assert.equal(db.sentLastHour(d) + db.failedLastDay(d), 0); // not counted as sent or failed
+  assert.equal(db.countSentLastHour(d) + db.countFailedLastDay(d), 0); // not counted as sent or failed
 });
 
 // Same title and attachments under another URL = duplicate; another attachment number = a different notice.
-test('sentTwin', () => {
+test('wasIdenticalNoticeSent', () => {
   const d = db.openDb(':memory:'); // fresh DB
   const pdf = (id) => [{ name: 'x.pdf', url: `https://medicina.unicz.it/scarica_allegato/${id}` }]; // attachment link
   db.upsertNotices(
@@ -115,17 +115,17 @@ test('sentTwin', () => {
     ],
     true,
   ); // same title
-  assert.equal(db.sentTwin(d, n(2).url, 'g@g.us'), false); // nothing sent yet
+  assert.equal(db.wasIdenticalNoticeSent(d, n(2).url, 'g@g.us'), false); // nothing sent yet
   db.recordDelivery(d, n(1).url, 'g@g.us', 'sent'); // first one sent
-  assert.equal(db.sentTwin(d, n(2).url, 'g@g.us'), true); // same title and attachment: duplicate
-  assert.equal(db.sentTwin(d, n(3).url, 'g@g.us'), false); // other attachment number: new notice
-  assert.equal(db.sentTwin(d, n(2).url, 'other@g.us'), false); // other group never got it
+  assert.equal(db.wasIdenticalNoticeSent(d, n(2).url, 'g@g.us'), true); // same title and attachment: duplicate
+  assert.equal(db.wasIdenticalNoticeSent(d, n(3).url, 'g@g.us'), false); // other attachment number: new notice
+  assert.equal(db.wasIdenticalNoticeSent(d, n(2).url, 'other@g.us'), false); // other group never got it
 });
 
 test('kv round trip', () => {
   const d = db.openDb(':memory:'); // fresh DB
-  assert.equal(db.getKv(d, 'x'), null); // missing key
-  db.setKv(d, 'x', 1); // write
-  db.setKv(d, 'x', 2); // overwrite
-  assert.equal(db.getKv(d, 'x'), '2'); // stored as string
+  assert.equal(db.getStateValue(d, 'x'), null); // missing key
+  db.setStateValue(d, 'x', 1); // write
+  db.setStateValue(d, 'x', 2); // overwrite
+  assert.equal(db.getStateValue(d, 'x'), '2'); // stored as string
 });

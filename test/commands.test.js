@@ -1,8 +1,8 @@
 // Unit tests for src/whatsapp/commands.js with a fake socket.
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
-import { openDb, listMappings, getKv, upsertNotices, mapGroup } from '../src/db.js'; // storage
-import { handleCommand, isSelfChat, textOf, normalizeName, autoLink, asId } from '../src/whatsapp/commands.js'; // module under test
+import { openDb, listGroupLinks, getStateValue, upsertNotices, linkGroup } from '../src/db.js'; // storage
+import { handleCommand, isSelfChat, extractMessageText, normalizeGroupName, autoLinkGroups, normalizeTargetId } from '../src/whatsapp/commands.js'; // module under test
 
 const user = { id: '393330000000:5@s.whatsapp.net', lid: '123456:5@lid' }; // the bot account (fake number)
 const names = new Map([
@@ -28,39 +28,39 @@ test('isSelfChat', () => {
 });
 
 // Text extraction from both message shapes.
-test('textOf', () => {
-  assert.equal(textOf({ message: { conversation: '!stato' } }), '!stato'); // simple text
-  assert.equal(textOf({ message: { extendedTextMessage: { text: '!mappa' } } }), '!mappa'); // extended text
-  assert.equal(textOf({ message: { ephemeralMessage: { message: { extendedTextMessage: { text: '!stato' } } } } }), '!stato'); // disappearing messages on
-  assert.equal(textOf({ message: { imageMessage: {} } }), ''); // ignored type
+test('extractMessageText', () => {
+  assert.equal(extractMessageText({ message: { conversation: '!stato' } }), '!stato'); // simple text
+  assert.equal(extractMessageText({ message: { extendedTextMessage: { text: '!mappa' } } }), '!mappa'); // extended text
+  assert.equal(extractMessageText({ message: { ephemeralMessage: { message: { extendedTextMessage: { text: '!stato' } } } } }), '!stato'); // disappearing messages on
+  assert.equal(extractMessageText({ message: { imageMessage: {} } }), ''); // ignored type
 });
 
 // Group listing, mapping by index, validation and unmapping.
 test('!gruppi then !associa / !dissocia', async () => {
   const db = openDb(':memory:'); // fresh DB
-  const ctx = { db, sock, names, state: {} }; // command context
+  const ctx = { db, sock, targetNames: names, session: {} }; // command context
   const list = await handleCommand('!gruppi', ctx); // list groups
   assert.match(list, /^1\. Alfa 🏘️ \(bacheca\)\n {3}222-2@g\.us\n2\. Zeta 🏘️/); // sorted, community parent hidden
   assert.match(await handleCommand('!associa 1 ateneo', ctx), /Collegato/); // map by index
   assert.match(await handleCommand('!associa 2 nope', ctx), /sconosciuti/); // unknown target refused
   assert.match(await handleCommand('!associa 393331112222@s.whatsapp.net giuri', ctx), /^Uso/); // person JID refused
   assert.deepEqual(
-    listMappings(db).map((m) => ({ ...m })),
+    listGroupLinks(db).map((m) => ({ ...m })),
     [{ target: 'ateneo', jid: '222-2@g.us' }],
   ); // only the valid mapping (rows have a null prototype)
   assert.match(await handleCommand('!dissocia 1 ateneo', ctx), /Scollegato/); // unmap
-  assert.equal(listMappings(db).length, 0); // gone
+  assert.equal(listGroupLinks(db).length, 0); // gone
 });
 
 // Non-commands are ignored; pause/resume toggles the flag; test previews the latest notice.
 test('misc commands', async () => {
   const db = openDb(':memory:'); // fresh DB
-  const ctx = { db, sock, names, state: {} }; // command context
+  const ctx = { db, sock, targetNames: names, session: {} }; // command context
   assert.equal(await handleCommand('ciao', ctx), null); // not a command
   await handleCommand('!pausa', ctx); // pause
-  assert.equal(getKv(db, 'paused'), '1'); // flag set
+  assert.equal(getStateValue(db, 'paused'), '1'); // flag set
   await handleCommand('!riprendi', ctx); // resume
-  assert.equal(getKv(db, 'paused'), '0'); // flag cleared
+  assert.equal(getStateValue(db, 'paused'), '0'); // flag cleared
   upsertNotices(db, 'giuri', [{ url: 'https://diges.unicz.it/avviso/1', title: 'Lezione', body: 'x' }], true); // a notice
   assert.match(await handleCommand('!test giuri', ctx), /Anteprima[\s\S]*Lezione/); // preview text
   assert.match(await handleCommand('!test <Giuri>.', ctx), /Anteprima/); // brackets, final dot and capital letter tolerated
@@ -69,7 +69,7 @@ test('misc commands', async () => {
   assert.match(await handleCommand('!test gi\u00adx', ctx), /ricevuto: gi\[U\+AD\]x/); // invisible characters spelled out
   assert.match(await handleCommand('!prova nope', ctx), /Target sconosciuto: nope/); // unknown target
   assert.match(await handleCommand('!prova', ctx), /Niente da mettere in coda/); // no mapping yet
-  mapGroup(db, 'giuri', '1@g.us'); // link a group
+  linkGroup(db, 'giuri', '1@g.us'); // link a group
   assert.match(await handleCommand('!prova giuri', ctx), /1 messaggi di prova in coda/); // queued
   assert.match(await handleCommand('!svuota', ctx), /Coda svuotata: 1 messaggi annullati/); // the !prova message is dropped
   assert.match(await handleCommand('!stato', ctx), /In coda: 0/); // empty queue
@@ -80,24 +80,24 @@ test('misc commands', async () => {
 // Phone auto-capitalisation must never turn a link into an unlink.
 test('capitalised commands and targets', async () => {
   const db = openDb(':memory:'); // fresh DB
-  const ctx = { db, sock, names, state: {} }; // command context
+  const ctx = { db, sock, targetNames: names, session: {} }; // command context
   await handleCommand('!Gruppi', ctx); // list groups
   assert.equal(await handleCommand('!Associa 1 Ateneo', ctx), '✅ Collegato a "Alfa": ateneo'); // linked, group name shown
-  assert.equal(listMappings(db).length, 1); // really stored
+  assert.equal(listGroupLinks(db).length, 1); // really stored
   assert.match(await handleCommand('!DISSOCIA 1 ateneo', ctx), /Scollegato/); // unlink in any case
-  assert.equal(listMappings(db).length, 0); // gone
+  assert.equal(listGroupLinks(db).length, 0); // gone
   assert.match(await handleCommand('!Test Giuri', ctx), /Nessun avviso/); // target accepted case-insensitively
 });
 
 // Links are checked against the groups the bot is really in; !mappa flags broken ones.
 test('!associa verifies the group and !mappa flags broken links', async () => {
   const db = openDb(':memory:'); // fresh DB
-  const ctx = { db, sock, names, state: {} }; // command context
+  const ctx = { db, sock, targetNames: names, session: {} }; // command context
   assert.match(await handleCommand('!associa 1 giuri', ctx), /^Uso/); // index without a previous !gruppi
   assert.match(await handleCommand('!associa 555-5@g.us giuri', ctx), /non è in questo gruppo/); // JID typo / bot not a member
   assert.match(await handleCommand('!associa 999@g.us giuri', ctx), /community/); // community parent cannot receive messages
-  assert.equal(listMappings(db).length, 0); // nothing stored by the refusals
-  mapGroup(db, 'giuri', '555-5@g.us'); // an old link to a group the bot has left
+  assert.equal(listGroupLinks(db).length, 0); // nothing stored by the refusals
+  linkGroup(db, 'giuri', '555-5@g.us'); // an old link to a group the bot has left
   await handleCommand('!gruppi', ctx); // list groups
   await handleCommand('!associa 2 giuri', ctx); // Zeta
   const map = await handleCommand('!mappa', ctx); // mapping table
@@ -108,29 +108,29 @@ test('!associa verifies the group and !mappa flags broken links', async () => {
 // A course removed from sources.json can still be unlinked, but not linked again.
 test('!dissocia accepts targets that are only in the mapping', async () => {
   const db = openDb(':memory:'); // fresh DB
-  const ctx = { db, sock, names, state: {} }; // command context
-  mapGroup(db, 'vecchio_corso', '111-1@g.us'); // link to a removed course
+  const ctx = { db, sock, targetNames: names, session: {} }; // command context
+  linkGroup(db, 'vecchio_corso', '111-1@g.us'); // link to a removed course
   assert.match(await handleCommand('!dissocia 111-1@g.us vecchio_corso', ctx), /Scollegato/); // allowed
-  assert.equal(listMappings(db).length, 0); // gone
+  assert.equal(listGroupLinks(db).length, 0); // gone
   assert.match(await handleCommand('!associa 111-1@g.us vecchio_corso', ctx), /sconosciuti/); // unknown for new links
 });
 
 // Ids typed on a phone keep only [a-z0-9_].
-test('asId', () => {
-  assert.equal(asId('<Infermieristica>.'), 'infermieristica'); // brackets copied from the help, final dot
-  assert.equal(asId('farmacia\u200b'), 'farmacia'); // zero-width space from the keyboard
-  assert.equal(asId(undefined), ''); // missing argument
+test('normalizeTargetId', () => {
+  assert.equal(normalizeTargetId('<Infermieristica>.'), 'infermieristica'); // brackets copied from the help, final dot
+  assert.equal(normalizeTargetId('farmacia\u200b'), 'farmacia'); // zero-width space from the keyboard
+  assert.equal(normalizeTargetId(undefined), ''); // missing argument
 });
 
 // Names typed on a phone match the sources.json names regardless of case, accents, apostrophe style and spaces.
-test('normalizeName', () => {
-  assert.equal(normalizeName('  TECNICHE della Prevenzione nell’Ambiente  '), normalizeName("Tecniche della Prevenzione nell'Ambiente")); // curly apostrophe
-  assert.equal(normalizeName('Università'), 'universita'); // accents
-  assert.notEqual(normalizeName('Sociologia'), normalizeName('Sociologia e Servizio Sociale')); // exact name, not prefix
+test('normalizeGroupName', () => {
+  assert.equal(normalizeGroupName('  TECNICHE della Prevenzione nell’Ambiente  '), normalizeGroupName("Tecniche della Prevenzione nell'Ambiente")); // curly apostrophe
+  assert.equal(normalizeGroupName('Università'), 'universita'); // accents
+  assert.notEqual(normalizeGroupName('Sociologia'), normalizeGroupName('Sociologia e Servizio Sociale')); // exact name, not prefix
 });
 
 // Courses are linked to the groups named like them; ambiguous and missing ones are reported, never guessed.
-test('autoLink and !autoassocia', async () => {
+test('autoLinkGroups and !autoassocia', async () => {
   const db = openDb(':memory:'); // fresh DB
   const courses = new Map([
     ['giuri', 'Giurisprudenza'],
@@ -148,8 +148,8 @@ test('autoLink and !autoassocia', async () => {
     f: { id: '6-6@g.us', subject: 'Corso Senza Gruppo', isCommunity: true }, // community parent: never linked
   };
   const fake = { groupFetchAllParticipating: async () => groups }; // fake socket
-  mapGroup(db, 'eco', '9-9@g.us'); // linked by hand before: must stay as it is
-  const r = await autoLink({ db, sock: fake, courses, force: false }); // automatic run at connection
+  linkGroup(db, 'eco', '9-9@g.us'); // linked by hand before: must stay as it is
+  const r = await autoLinkGroups({ db, sock: fake, groupNamesByTarget: courses, force: false }); // automatic run at connection
   assert.deepEqual(r.linked, [
     ['giuri', 'GIURISPRUDENZA'],
     ['bio_amb', ' scienze biologiche per l’ambiente  (interateneo)'],
@@ -157,11 +157,11 @@ test('autoLink and !autoassocia', async () => {
   assert.equal(r.already, 1); // eco untouched
   assert.deepEqual(r.ambiguous, [['doppio', 'Doppio']]); // two candidates: not guessed
   assert.deepEqual(r.missing, [['assente', 'Corso Senza Gruppo']]); // community parent ignored
-  assert.ok(listMappings(db).some((m) => m.target === 'eco' && m.jid === '9-9@g.us')); // manual link kept
+  assert.ok(listGroupLinks(db).some((m) => m.target === 'eco' && m.jid === '9-9@g.us')); // manual link kept
 
-  const ctx = { db, sock: fake, names: new Map(courses), state: {}, courses }; // command context
+  const ctx = { db, sock: fake, targetNames: new Map(courses), session: {}, groupNamesByTarget: courses }; // command context
   await handleCommand('!dissocia 1-1@g.us giuri', ctx); // owner removes an automatic link on purpose
-  assert.equal((await autoLink({ db, sock: fake, courses, force: false })).linked.length, 0); // next connection respects it
+  assert.equal((await autoLinkGroups({ db, sock: fake, groupNamesByTarget: courses, force: false })).linked.length, 0); // next connection respects it
   const reply = await handleCommand('!AutoAssocia', ctx); // explicit request
   assert.match(reply, /^🔗 \*Associazione automatica/); // never starts with "!"
   assert.match(reply, /✅ Collegati ora \(1\):\n• GIURISPRUDENZA → giuri/); // re-linked on request
