@@ -26,7 +26,7 @@ A project by **Primavera Studentesca UMG**.
 
 ## Features
 
-- **Automatic board reading.** Every 10 minutes the bot reads the notice page of each degree course:
+- **Automatic board reading.** Every 5 minutes the bot reads the notice page of each degree course:
   - `medicina.unicz.it/corso_studio/*/avvisi`
   - `sfn.unicz.it/corso_studio/*/avvisi`
   - `diges.unicz.it/corso_studio/*/avvisi`
@@ -42,12 +42,12 @@ A project by **Primavera Studentesca UMG**.
 
 The service is a single Node.js process running four independent activities, which communicate only through an SQLite database:
 
-| Activity       | What it does                                                                            |
-| -------------- | --------------------------------------------------------------------------------------- |
-| **Poller**     | Every 10 minutes downloads the boards, detects new notices and fetches their full text. |
-| **RSS server** | Serves the feeds and the service status on port 8080, read-only.                        |
-| **Sender**     | Empties the WhatsApp message queue at a slow, human-like pace.                          |
-| **Commands**   | Runs the commands the owner writes in the "Message yourself" chat.                      |
+| Activity       | What it does                                                                           |
+| -------------- | -------------------------------------------------------------------------------------- |
+| **Poller**     | Every 5 minutes downloads the boards, detects new notices and fetches their full text. |
+| **RSS server** | Serves the feeds and the service status on port 8080, read-only.                       |
+| **Sender**     | Empties the WhatsApp message queue at a slow, human-like pace.                         |
+| **Commands**   | Runs the commands the owner writes in the "Message yourself" chat.                     |
 
 Two rules protect the groups from unwanted messages:
 
@@ -87,7 +87,7 @@ The configuration lives in the server's `.env` file, created by copying `.env.ex
 | -------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BASE_URL`           | `http://localhost:8080` | Public address of the server, used in feed links. On the server: `http://<server-IP>:8080`.                                                                               |
 | `PORT`               | `8080`                  | HTTP port inside the container.                                                                                                                                           |
-| `POLL_MINUTES`       | `10`                    | Minutes between two board checks.                                                                                                                                         |
+| `POLL_MINUTES`       | `5`                     | Minutes between two board checks.                                                                                                                                         |
 | `WA_ENABLED`         | `false`                 | `false` runs the RSS feeds only (for tests on the PC). On the server: `true`.                                                                                             |
 | `WA_PAIRING_NUMBER`  | `39xxxxxxxxxx`          | Number of the bot's WhatsApp Business account, digits only with country code (`39…`). Set: link with an 8-character code. **Empty: link by scanning a QR** (recommended). |
 | `SEND_MIN_DELAY_S`   | `8`                     | Minimum pause between two messages, in seconds.                                                                                                                           |
@@ -170,7 +170,7 @@ Invii: ▶️ attivi
 
 How to read it:
 
-- **Ultimo controllo** (last check): when the boards were last read, in UTC time (Italian time minus 1 or 2 hours). It should never be older than about 10 minutes.
+- **Ultimo controllo** (last check): when the boards were last read, in UTC time (Italian time minus 1 or 2 hours). It should never be older than about 5 minutes.
 - **In coda** (queued): messages waiting to be sent. A few dozen right after many notices is normal: the bot sends them slowly on purpose.
 - **Inviati ultima ora** (sent in the last hour): never above 40.
 - **Falliti ultime 24h** (failed in the last 24 hours): should be `0`. If not, a group is not receiving: usually the bot is not an admin of a group where only admins can write, or it was removed from a group. Check with `!mappa`.
