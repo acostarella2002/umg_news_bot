@@ -34,8 +34,8 @@ A project by **Primavera Studentesca UMG**.
   It also reads the notices of the three schools, the university RSS feeds (`web.unicz.it`) and those of the UMG Foundation (calls and news).
 
 - **RSS feeds.** One feed per course, per school, for the university and for the Foundation, plus an aggregated feed with every notice.
-- **WhatsApp notifications.** Every **new** notice is sent to the group of its course, with title, date, an excerpt, the attachments and a link to the original.
-- **School notices.** A notice published by a school reaches every course of that school.
+- **WhatsApp notifications.** Every **new** notice is sent to the group of its course, using the template in `config/message.json` (by default: title, text and a link to the original).
+- **School notices.** A notice published by a school goes to the school group; if the school has no group, it reaches every course group of that school.
 - **Managed from the phone.** Groups are linked to courses automatically, and everything else is controlled with simple commands in the bot account's _"Message yourself"_ chat.
 
 ## How it works
@@ -179,7 +179,7 @@ How to read it:
 
 #### `!autoassocia` — link the courses automatically
 
-Links every course of `config/sources.json` to the WhatsApp group whose name is **exactly the course name** (upper/lower case, accents, apostrophe style and extra spaces do not matter). This is the recommended way to do the first setup: it avoids linking a group to the wrong course. The exact names are listed in [step C.1](#prepare-the-community).
+Links every course, school and feed of `config/sources.json` to the WhatsApp group whose name is **exactly its name** (or its optional `group` field) (upper/lower case, accents, apostrophe style and extra spaces do not matter). This is the recommended way to do the first setup: it avoids linking a group to the wrong course. The exact names are listed in [step C.1](#prepare-the-community).
 
 ```
 🔗 *Associazione automatica gruppi → corsi*
@@ -335,12 +335,12 @@ Every 6 days (`KEEPALIVE_DAYS`) the bot writes a reminder with a short status in
 | Command                 | Description                                                             |
 | ----------------------- | ----------------------------------------------------------------------- |
 | `npm ci`                | Installs the dependencies exactly at the locked versions.               |
-| `npm test`              | Runs the 64 automated tests (modules, security, end-to-end flow).       |
+| `npm test`              | Runs the 66 automated tests (modules, security, end-to-end flow).       |
 | `npm run lint`          | Checks the code with ESLint.                                            |
 | `npm run format:check`  | Checks formatting with Prettier (`npm run format` fixes it).            |
 | `npm run check:sources` | Checks every board live and reports the empty or unreachable ones.      |
 | `npm run poll:once`     | Runs one real cycle on an in-memory database, without sending messages. |
-| `npm start`             | Starts the full service.                                                |
+| `npm start`             | Starts the full service, reading `.env` if present.                     |
 
 ```
 src/            application code (poller, parsers, database, server, WhatsApp)

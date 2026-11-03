@@ -49,7 +49,8 @@ export function createRssServer({ db, sources, baseUrl, health = () => ({ ok: tr
       response.end(request.method === 'HEAD' ? undefined : body); // HEAD gets headers only
     };
     if (request.method !== 'GET' && request.method !== 'HEAD') return send(405, 'text/plain', 'Method Not Allowed'); // read-only server
-    const path = new URL(request.url, 'http://x').pathname; // ignore query string
+    const path = URL.parse(request.url, 'http://x')?.pathname; // ignore query string; undefined on a malformed target
+    if (!path) return send(400, 'text/plain', 'Bad Request'); // anyone can reach this port: bad input must never crash the process
     if (path === '/health') {
       const status = health(); // current status
       return send(status.ok ? 200 : 503, 'application/json', JSON.stringify(status)); // 503 marks the container "unhealthy"

@@ -9,7 +9,7 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning src/index.js",
+    "start": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/index.js",
     "poll:once": "node --disable-warning=ExperimentalWarning scripts/poll-once.js",
     "check:sources": "node scripts/check-sources.js",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\"",

@@ -9,7 +9,7 @@ $archive = Join-Path $env:TEMP 'umg-news-bot.tgz' # temporary archive
 $tar = Join-Path $env:SystemRoot 'System32\tar.exe' # Windows tar (Git's GNU tar mishandles C:\ paths)
 
 # Archive without local-only folders; .env and data/ are never overwritten on the server.
-& $tar -czf $archive -C $root --exclude=node_modules --exclude=.tools --exclude=data --exclude=.env --exclude=brain --exclude=.git .
+& $tar -czf $archive -C $root --exclude=node_modules --exclude=ssh_umg_bot.txt --exclude=data --exclude=.env --exclude=brain --exclude=.git .
 if ($LASTEXITCODE) { throw 'archive creation failed' }
 scp -i $Key $archive "ubuntu@${Server}:~/umg-news-bot.tgz" # upload
 if ($LASTEXITCODE) { throw 'upload failed' }

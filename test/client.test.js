@@ -2,7 +2,7 @@
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
 import { DisconnectReason } from '@whiskeysockets/baileys'; // real status codes
-import { reconnectDelay, isSignalSessionLog } from '../src/whatsapp/client.js'; // module under test
+import { reconnectDelay, isLinked, isSignalSessionLog } from '../src/whatsapp/client.js'; // module under test
 
 // Logout needs a human, a second instance gets a long pause, everything else uses the backoff.
 test('reconnectDelay', () => {
@@ -12,6 +12,14 @@ test('reconnectDelay', () => {
   assert.equal(reconnectDelay(DisconnectReason.restartRequired, 5000), 5000); // normal after pairing
   assert.equal(reconnectDelay(DisconnectReason.connectionLost, 20_000), 20_000); // network hiccup
   assert.equal(reconnectDelay(undefined, 5000), 5000); // unknown reason
+});
+
+// A QR-linked session keeps registered: false for ever (seen in production): a real logout must still stop the bot and keep the session folder.
+test('isLinked', () => {
+  const qrLinked = { registered: false, account: { details: 'x' } }; // shape of creds.json after a QR link
+  assert.equal(isLinked(qrLinked), true); // linked
+  assert.equal(reconnectDelay(DisconnectReason.loggedOut, 5000, isLinked(qrLinked)), null); // needs a human
+  assert.equal(isLinked({ registered: false, me: { id: 'x' } }), false); // pairing code asked but never entered
 });
 
 // libsignal session dumps (with private keys) are dropped from the console; other messages pass.

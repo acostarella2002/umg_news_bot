@@ -229,6 +229,12 @@
       "url": "https://web.unicz.it/it/category/avvisi-generali/10/rss"
     },
     {
+      "id": "ateneo",
+      "name": "Ateneo UMG - Notizie",
+      "group": "Ateneo UMG - Avvisi Generali",
+      "url": "https://web.unicz.it/it/category/notizie-ateneo/50/rss"
+    },
+    {
       "id": "fondazione",
       "name": "Fondazione UMG - Bandi",
       "group": "Fondazione UMG - Avvisi Generali",

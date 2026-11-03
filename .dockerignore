@@ -1,7 +1,6 @@
 node_modules
 data
 .env
-.tools
 .claude
 test
 brain

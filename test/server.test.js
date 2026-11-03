@@ -3,6 +3,7 @@ import { test, before, after } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
 import * as cheerio from 'cheerio'; // used to check the produced XML parses
 import { tmpdir } from 'node:os'; // a surely writable folder
+import { connect } from 'node:net'; // raw socket: fetch refuses to send a malformed URL
 import { openDb, upsertNotices, setStateValue } from '../src/db.js'; // storage
 import { xmlEscape } from '../src/rss.js'; // escaping helper
 import { createRssServer, computeHealth } from '../src/server.js'; // module under test
@@ -97,4 +98,17 @@ test('GET /health returns 503 when not ok', async () => {
   assert.equal(r.status, 503); // unhealthy
   assert.equal((await r.json()).whatsapp, 'replaced'); // reason visible
   s.close(); // stop
+});
+
+// The port is public: a malformed request target gets an error reply and the server keeps working.
+test('malformed request target does not crash the server', async () => {
+  const reply = await new Promise((resolve, reject) => {
+    let received = ''; // raw response
+    const socket = connect(server.address().port, '127.0.0.1', () => socket.write('GET //[ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'));
+    socket.on('data', (chunk) => (received += chunk));
+    socket.on('close', () => resolve(received));
+    socket.on('error', reject);
+  });
+  assert.match(reply, /^HTTP\/1\.1 400/); // refused
+  assert.equal((await fetch(`${base}/feeds`)).status, 200); // still alive
 });
