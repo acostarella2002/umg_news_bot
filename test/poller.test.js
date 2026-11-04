@@ -122,7 +122,7 @@ test('findMovedUp', () => {
 });
 
 const feedUrl = sources.feeds[0].url; // the feed under test
-const page = (id) => `https://web.unicz.it/it/news/${id}`; // a page code in the Ateneo feeds
+const page = (id) => `https://www.fondazioneumg.it/notizia/${id}`; // a page code in a feed carrying the whole text
 // RSS document listing the given page codes, top first; `bodies` overrides the text of a page.
 const feedOf = (ids, bodies = {}) =>
   `<rss><channel>${ids.map((id) => `<item><title>Avviso ${id}</title><link>${page(id)}</link><pubDate>Mon, 03 Aug 2026 10:00:00 GMT</pubDate><description>${bodies[id] ?? `Testo ${id}`}</description></item>`).join('')}</channel></rss>`;
@@ -292,4 +292,68 @@ test('the update of a page on two boards reaches both groups once', async () => 
       .sort(),
     ['a@g.us', 'b@g.us'],
   ); // …for both groups
+});
+
+// The Ateneo feeds hold only a cut excerpt: the group must get the whole text, read from the page.
+const ateneoPage = (id) => `http://web.unicz.it/it/news/${id}`; // a page code in the Ateneo feeds
+const ateneoFeedOf = (ids) =>
+  `<rss><channel>${ids.map((id) => `<item><title>Avviso ${id}</title><link>${ateneoPage(id)}</link><pubDate>Mon, 03 Aug 2026 10:00:00 GMT</pubDate><description><![CDATA[Testo tagliato dal sito attr...]]></description></item>`).join('')}</channel></rss>`;
+const ateneoDetail = (text, file) =>
+  `<div class="col-md-9"><div class="text-justify">${text}</div><div class="well well-sm"><h4><a href="/uploads/${file}.pdf">File</a></h4></div></div>`;
+// Poller on a fresh DB with one Ateneo feed linked to a group, already seeded.
+const ateneoSetup = async (ids) => {
+  const db = openDb(':memory:'); // fresh DB
+  linkGroup(db, 'ateneo', 'g@g.us'); // group first
+  const pages = { [feedUrl]: ateneoFeedOf(ids) }; // what the site shows
+  const fetched = []; // pages really downloaded
+  const fetchText = async (url) => {
+    fetched.push(url); // recorded
+    return fakeFetch(pages)(url); // canned page
+  };
+  const poll = () => pollOnce({ db, sources: { courses: [], schools: [], feeds: [{ id: 'ateneo', url: feedUrl }] }, fetchText, log: {} }); // one cycle
+  await poll(); // seed
+  return { db, pages, fetched, poll };
+};
+
+// A new Ateneo notice waits for its page and is sent with the whole text; the seed downloads no page.
+test('a new Ateneo notice takes the whole text from its page', async () => {
+  const { db, pages, fetched, poll } = await ateneoSetup([1, 2]); // seeded
+  assert.deepEqual(fetched, [feedUrl]); // only the feed: 50 pages at every seed would be rude
+  assert.equal(getNotice(db, ateneoPage(1)).body, null); // no cut excerpt stored
+  pages[feedUrl] = ateneoFeedOf([9, 1, 2]); // new notice
+  pages[ateneoPage(9)] = ateneoDetail(`Inizio.<br>${'parola '.repeat(200)}fine`, 'bando'); // its page
+  await poll(); // one cycle
+  const notice = getNotice(db, ateneoPage(9)); // what the message will use
+  assert.ok(notice.body.startsWith('Inizio.\nparola')); // whole text, with its line break
+  assert.ok(notice.body.endsWith('fine')); // not cut
+  assert.ok(!notice.body.includes('attr...')); // nothing from the excerpt
+  assert.deepEqual(
+    notice.attachments.map((attachment) => attachment.url),
+    ['http://web.unicz.it/uploads/bando.pdf'],
+  ); // the files of the page
+  assert.equal(pendingDeliveries(db).length, 1); // ready to go
+});
+
+// A page that cannot be read still ends in a message (title and link), as for the school boards.
+test('a new Ateneo notice whose page fails is sent with title and link', async () => {
+  const { db, pages, poll } = await ateneoSetup([1]); // seeded
+  pages[feedUrl] = ateneoFeedOf([9, 1]); // new notice, its page is down
+  await poll(); // one cycle
+  assert.equal(getNotice(db, ateneoPage(9)).body, ''); // given up, not retried forever
+  assert.equal(pendingDeliveries(db).length, 1); // still goes
+});
+
+// An edited Ateneo page: the update shows the page as it is now; if the page is down, the old text stays.
+test('the update of an Ateneo page reads the page again', async () => {
+  const { db, pages, poll } = await ateneoSetup([1, 2, 3]); // seeded
+  agePages(db); // published long ago
+  pages[feedUrl] = ateneoFeedOf([3, 1, 2]); // page 3 edited
+  pages[ateneoPage(3)] = ateneoDetail('Terzo scorrimento pubblicato', 'terzo'); // new text
+  assert.equal((await poll()).updates, 1); // announced
+  assert.equal(getNotice(db, ateneoPage(3)).body, 'Terzo scorrimento pubblicato'); // from the page, not the excerpt
+  db.prepare("UPDATE notice_updates SET at = '2026-01-01T00:00:00.000Z'").run(); // long after that
+  pages[feedUrl] = ateneoFeedOf([2, 3, 1]); // page 2 edited too
+  assert.equal((await poll()).updates, 1); // its page is down, the group is still told
+  assert.equal(getNotice(db, ateneoPage(2)).body, null); // nothing invented
+  assert.equal(getNotice(db, ateneoPage(3)).body, 'Terzo scorrimento pubblicato'); // the other page is untouched
 });

@@ -62,9 +62,9 @@ const findEditedNotices = (db, notices, movedUp) =>
   });
 
 // Store the page as it is now, so the message shows it; on failure the old text stays and the group is still told to look at the page.
-async function refreshEditedNotice({ db, job, notice, fetchText, log }) {
+async function refreshEditedNotice({ db, notice, fetchText, log }) {
   try {
-    saveDetail(db, notice.url, job.isFeed ? notice : parseDetail(await fetchText(notice.url), notice.url)); // feeds carry the text, boards do not
+    saveDetail(db, notice.url, notice.body == null ? parseDetail(await fetchText(notice.url), notice.url) : notice); // only some feeds carry the whole text
   } catch (err) {
     log.warn?.({ url: notice.url, err: err.message }, 'detail failed'); // public URL only
   }
@@ -120,7 +120,7 @@ export async function pollOnce({ db, sources, fetchText = defaultFetchText, log 
           log.warn?.({ url: job.url, err: `${editedNotices.length} pages changed at once: no update sent` }, 'source burst'); // public URL only
         else for (const notice of editedNotices) if (!editedPages.has(notice.url)) editedPages.set(notice.url, new Set()); // first board to notice in this cycle
         for (const notice of notices) for (const target of job.targets) editedPages.get(notice.url)?.add(target); // also the boards reading the page after the stored date moved
-        if (!isEditBurst) for (const notice of editedNotices) await refreshEditedNotice({ db, job, notice, fetchText, log }); // last: this wait lets the other boards run
+        if (!isEditBurst) for (const notice of editedNotices) await refreshEditedNotice({ db, notice, fetchText, log }); // last: this wait lets the other boards run
         summary.sources++; // success
       } catch (err) {
         summary.errors++; // one broken board never stops the others

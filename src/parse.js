@@ -21,6 +21,14 @@ export function romeLocalToIso(dateText) {
   return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}${romeOffset}`).toISOString(); // shortcut: offset sampled at the UTC guess, can be 1h off inside DST switch hours
 }
 
+// Some pages escape their text twice: without this, "&nbsp;" reaches the groups as written. Anything that is not a known entity stays as it is.
+function decodeLeftoverEntities(text) {
+  const decoded = text.replace(/&(?:#\d+|#x[\da-f]+|[a-z][a-z\d]*);/gi, (entity) => cheerio.load(entity, null, false).root().text()); // one layer
+  return decoded === text ? text : decodeLeftoverEntities(decoded); // ends: every change makes the text shorter
+}
+// One clean line of text, for titles and attachment names.
+const cleanLine = (text) => decodeLeftoverEntities(text).replace(/\s+/g, ' ').trim();
+
 // Turn an HTML fragment into readable plain text, keeping links as "text (url)".
 export function htmlToText(html) {
   const $ = cheerio.load(html || '', null, false); // fragment mode, no <html> wrapper
@@ -32,8 +40,7 @@ export function htmlToText(html) {
   });
   $('br').replaceWith('\n'); // line breaks
   $('p, div, li, tr, h1, h2, h3, h4').each((_, element) => void $(element).append('\n')); // block elements end with a newline
-  return $.root()
-    .text() // decoded text content
+  return decodeLeftoverEntities($.root().text()) // decoded text content
     .replace(/\u00a0/g, ' ') // non-breaking spaces to normal spaces
     .replace(/[ \t]+/g, ' ') // collapse horizontal whitespace
     .replace(/ *\n */g, '\n') // trim around newlines
@@ -52,7 +59,7 @@ export function parseList(html, pageUrl, allowedKinds = ['avviso_didattica', 'av
     const url = new URL(link.attr('href'), pageUrl).href; // absolute URL
     const kind = /\/(avviso[a-z_]*)\/\d+\/?$/.exec(new URL(url).pathname)?.[1]; // e.g. "avviso_didattica"
     if (!allowedKinds.includes(kind) || noticesByUrl.has(url)) return; // wrong kind or already seen
-    noticesByUrl.set(url, { url, title: link.text().replace(/\s+/g, ' ').trim(), published, updated }); // single-line title
+    noticesByUrl.set(url, { url, title: cleanLine(link.text()), published, updated }); // single-line title
   };
   $('tr').each((_, row) => {
     const cells = $(row).find('td'); // table layout: published | title | updated
@@ -65,21 +72,21 @@ export function parseList(html, pageUrl, allowedKinds = ['avviso_didattica', 'av
   return [...noticesByUrl.values()]; // array of notices
 }
 
-// Parse a notice detail page: body text and attachments (both CMS templates).
+// Parse a notice detail page: body text and attachments (school CMS templates and the Ateneo site).
 export function parseDetail(html, pageUrl) {
   const $ = cheerio.load(html); // full document
   $('.jumbotron').find('h2, hr, small').remove(); // medicina/sfn: drop title and date footer, keep the (nested <p>) body
-  const bodyElement = $('.jumbotron').first().length // medicina / sfn template
-    ? $('.jumbotron').first()
-    : $('div.my-5[style*="text-align:justify"]').first(); // diges template
+  const bodyElement = ['.jumbotron', 'div.my-5[style*="text-align:justify"]', '.col-md-9 div.text-justify']
+    .map((selector) => $(selector).first())
+    .find((element) => element.length); // medicina / sfn, diges, Ateneo
   const attachments = []; // [{ name, url }]
-  $('a[href*="scarica_allegato"], #allegati_news a[href]').each((_, link) => {
+  $('a[href*="scarica_allegato"], #allegati_news a[href], .col-md-9 .well a[href]').each((_, link) => {
     const url = new URL($(link).attr('href'), pageUrl).href; // absolute URL
     if (/^https?:/.test(url) && !attachments.some((attachment) => attachment.url === url))
       // only web links, no duplicates
-      attachments.push({ name: $(link).text().replace(/\s+/g, ' ').trim() || 'Allegato', url }); // fallback label
+      attachments.push({ name: cleanLine($(link).text()) || 'Allegato', url }); // fallback label
   });
-  return { body: htmlToText(bodyElement.html() || ''), attachments }; // empty body when the template is unknown
+  return { body: htmlToText(bodyElement?.html() || ''), attachments }; // empty body when the template is unknown
 }
 
 // Parse an RSS 2.0 feed into notices (web.unicz.it and Fondazione UMG feeds).
@@ -94,12 +101,13 @@ export function parseRss(xml) {
         .get()
         .filter((attachment) => /^https?:/i.test(attachment.url)); // drop mailto/javascript links
       const publishedDate = new Date($(item).find('pubDate').text()); // RFC 822 date
+      const url = $(item).find('link').first().text().trim(); // item permalink (dedup key)
       return {
-        url: $(item).find('link').first().text().trim(), // item permalink (dedup key)
-        title: $(item).find('title').first().text().replace(/\s+/g, ' ').trim(), // titles may contain hard newlines
+        url,
+        title: cleanLine($(item).find('title').first().text()), // titles may contain hard newlines
         published: Number.isNaN(publishedDate.getTime()) ? null : publishedDate.toISOString(), // ignore invalid dates
         updated: null, // RSS has no separate update date here
-        body: htmlToText(descriptionHtml), // plain text
+        body: /^https?:\/\/web\.unicz\.it\//i.test(url) ? null : htmlToText(descriptionHtml), // the Ateneo feeds hold only the first 400 characters, without line breaks: the text comes from the page
         attachments, // links found in the description
       };
     })

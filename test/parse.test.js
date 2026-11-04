@@ -21,6 +21,49 @@ test('htmlToText strips scripts and keeps links', () => {
   assert.equal(t, 'Ciao form (https://x.unicz.it/f)\nriga 2'); // expected plain text
 });
 
+// Text escaped twice by the site must not reach the groups as "&nbsp;", and normal text must not change.
+test('htmlToText decodes entities left in the text', () => {
+  assert.equal(htmlToText('<p>CdLM&amp;nbsp;in Psicologia</p>'), 'CdLM in Psicologia'); // the real case
+  assert.equal(htmlToText('L&amp;#039;avviso &amp;egrave; &amp;#x41;'), "L'avviso è A"); // named and numeric
+  assert.equal(htmlToText('Ricerca &amp; Sviluppo R&amp;D; prezzo 5&amp;euro'), 'Ricerca & Sviluppo R&D; prezzo 5&euro'); // no entity here: left alone
+  assert.equal(htmlToText('Voce &amp;inesistente; qui'), 'Voce &inesistente; qui'); // unknown: left alone
+  assert.equal(htmlToText('&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;'), '<script>alert(1)</script>'); // shown as plain text, never as markup: the RSS output escapes it
+});
+
+// Titles and attachment names go through the same cleaning.
+test('titles and attachment names are decoded', () => {
+  const [notice] = parseRss(
+    '<rss><channel><item><title>Scorrimento&amp;amp;nbsp;CdLM\n  2026</title><link>https://www.fondazioneumg.it/n/1</link><description>Testo</description></item></channel></rss>',
+  ); // escaped twice, as in the feeds
+  assert.equal(notice.title, 'Scorrimento CdLM 2026'); // one clean line
+  const [row] = parseList(
+    "<table><tr><td></td><td><a href='/avviso_didattica/1'>Aula&amp;nbsp;5</a></td><td></td></tr></table>",
+    'https://diges.unicz.it/avvisi',
+  ); // list page
+  assert.equal(row.title, 'Aula 5'); // same on the boards
+});
+
+// The Ateneo site: the whole text with its line breaks, the files in their boxes, nothing from the rest of the page.
+test('parseDetail: Ateneo template', () => {
+  const page = `<div class="col-md-3"><div class="well"><a href="/menu.pdf">Menu</a></div></div>
+    <div class="col-md-9"><div class="row"><div class="col-xs-12">
+      <h3 class="text-justify">Titolo</h3><hr>
+      <div class="text-justify">Prima frase.<br>${'Seconda frase lunga. '.repeat(40)}</div>
+      <div class="well well-sm"><h4><a href="/uploads/2026/08/primo-scorrimento.pdf">Primo&amp;nbsp;scorrimento</a></h4><small><em>Pubblicato in data: 01/08/2026</em></small></div>
+      <div class="well well-sm"><h4><a href="/uploads/2026/09/secondo-scorrimento.pdf">Secondo scorrimento</a></h4></div>
+    </div></div></div>
+    <div class="footer"><a href="/admin/uploads/cookies.pdf">Informativa</a></div>`; // same shape as news/133089
+  const detail = parseDetail(page, 'http://web.unicz.it/it/news/133089'); // parse
+  assert.ok(detail.body.startsWith('Prima frase.\nSeconda frase lunga.')); // the line break the feed loses
+  assert.ok(detail.body.length > 400); // more than the feed gives
+  assert.ok(!detail.body.includes('Titolo')); // the heading is not the body
+  assert.deepEqual(detail.attachments, [
+    { name: 'Primo scorrimento', url: 'http://web.unicz.it/uploads/2026/08/primo-scorrimento.pdf' },
+    { name: 'Secondo scorrimento', url: 'http://web.unicz.it/uploads/2026/09/secondo-scorrimento.pdf' },
+  ]); // only the boxes of the article
+  assert.deepEqual(parseDetail('<html></html>', 'http://web.unicz.it/it/news/1'), { body: '', attachments: [] }); // unknown template: empty, no crash
+});
+
 // Medicina course page (double-quoted table markup).
 test('parseList: medicina course page', () => {
   const rows = parseList(fx('med-cds.html'), 'https://medicina.unicz.it/corso_studio/infermieristica/avvisi'); // parse
@@ -72,6 +115,7 @@ test('parseRss: unicz feed', () => {
   const items = parseRss(fx('unicz-bacheca-studenti.xml')); // parse
   assert.ok(items.length >= 1); // at least one item
   assert.ok(items.every((i) => i.url.startsWith('http') && i.title && i.published)); // complete items
+  assert.ok(items.every((i) => i.body === null)); // the feed holds a cut excerpt: the text comes from the page
 });
 
 // Fondazione UMG feed (ISO-8859-1, multi-line titles, PDF link in description).
