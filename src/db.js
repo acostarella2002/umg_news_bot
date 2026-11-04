@@ -151,6 +151,23 @@ export function wasIdenticalNoticeSent(db, url, jid) {
     .some((sentNotice) => noticeIdentity(sentNotice) === noticeIdentity(candidate)); // different attachment numbers = different notices
 }
 
+// The words of a text: links and spaces are ignored, because the sites paste the new attachment's link inside the text and sometimes lose a space after it.
+const wordsOf = (text) =>
+  String(text ?? '')
+    .replace(/https?:\/\/[^\s)]+/g, '') // links
+    .replace(/\s+/g, ''); // spaces and line breaks
+
+// True when the group already received an earlier notice with the same words under another URL: this one is its update (e.g. new files). No time limit.
+export function wasSameTextSent(db, url, jid) {
+  const candidate = db.prepare('SELECT title, body, first_seen FROM notices WHERE url = ?').get(url); // notice about to be sent
+  return db
+    .prepare(
+      "SELECT notice.title, notice.body FROM deliveries delivery JOIN notices notice ON notice.url = delivery.url WHERE delivery.jid = ? AND delivery.status = 'sent' AND delivery.url != ? AND notice.first_seen <= ?",
+    )
+    .all(jid, url, candidate.first_seen) // an older notice sent late (retry, !prova) is not the update of a newer one
+    .some((sentNotice) => wordsOf(sentNotice.title) === wordsOf(candidate.title) && wordsOf(sentNotice.body) === wordsOf(candidate.body)); // title and body compared separately
+}
+
 // Number of messages sent in the last hour (rate limiting).
 export const countSentLastHour = (db) => db.prepare("SELECT COUNT(*) AS total FROM deliveries WHERE status = 'sent' AND at >= ?").get(isoAgo(36e5)).total; // rolling window
 

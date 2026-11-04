@@ -1,6 +1,6 @@
 // Delivery queue: sends pending notices to their WhatsApp groups slowly and safely.
-import { pendingDeliveries, recordDelivery, countSentLastHour, getNotice, getStateValue, wasIdenticalNoticeSent } from '../db.js'; // storage
-import { formatNotice } from './format.js'; // message text
+import { pendingDeliveries, recordDelivery, countSentLastHour, getNotice, getStateValue, wasIdenticalNoticeSent, wasSameTextSent } from '../db.js'; // storage
+import { formatNotice, markAsUpdate } from './format.js'; // message text
 import { redact } from '../redact.js'; // log scrubbing
 
 // Promise-based sleep.
@@ -74,7 +74,8 @@ export function createSender({
       return 'duplicate';
     }
     try {
-      const text = formatNotice(getNotice(db, next.url), targetNames.get(next.target) ?? next.target); // build the message
+      const message = formatNotice(getNotice(db, next.url), targetNames.get(next.target) ?? next.target); // build the message
+      const text = wasSameTextSent(db, next.url, next.jid) ? markAsUpdate(message) : message; // same words already in this group: say it is an update
       await sock.sendPresenceUpdate('composing', next.jid); // "typing…" like a human
       await sleep(1500 + random() * 2500); // short typing time
       await sock.sendMessage(next.jid, { text }); // send to the group

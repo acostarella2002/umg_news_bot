@@ -1,7 +1,7 @@
 // Unit tests for src/whatsapp/format.js.
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
-import { formatNotice, validateTemplate } from '../src/whatsapp/format.js'; // module under test
+import { formatNotice, markAsUpdate, validateTemplate } from '../src/whatsapp/format.js'; // module under test
 
 // A template using every placeholder (the layout used until 2026-10-14).
 const full = validateTemplate({
@@ -48,6 +48,11 @@ test('formatNotice with the shipped template', () => {
     formatNotice({ ...n, body: '' }, 'B'),
     '*📢Tirocinio II ANNO*\n\nhttps://www.medicina.unicz.it/avviso_didattica/10208\n\n*#PrimaveraStudentescaUMG*🌸',
   ); // no body: no double gap
+});
+
+// An update is the label followed by the unchanged message.
+test('markAsUpdate', () => {
+  assert.equal(markAsUpdate('*📢Titolo*\n\nTesto'), 'Aggiornamento in:\n\n*📢Titolo*\n\nTesto'); // exact text
 });
 
 // A custom template is applied as written; typos in placeholders are rejected at startup.

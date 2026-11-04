@@ -122,6 +122,64 @@ test('wasIdenticalNoticeSent', () => {
   assert.equal(db.wasIdenticalNoticeSent(d, n(2).url, 'other@g.us'), false); // other group never got it
 });
 
+// DB with one notice already sent to g@g.us and one candidate; returns the answer for the candidate.
+const sameTextAfter = (sent, candidate, { status = 'sent', jid = 'g@g.us' } = {}) => {
+  const d = db.openDb(':memory:'); // fresh DB
+  db.upsertNotices(d, 'infermieristica', [n(1, { title: 'Titolo', body: 'Testo', ...sent }), n(2, { title: 'Titolo', body: 'Testo', ...candidate })], true); // sent notice first
+  db.recordDelivery(d, n(1).url, 'g@g.us', status); // the earlier delivery
+  return db.wasSameTextSent(d, n(2).url, jid); // answer for the candidate
+};
+
+// Same words under another URL = an update of what the group already read.
+test('wasSameTextSent: same title and body', () => {
+  assert.equal(sameTextAfter({}, {}), true); // identical
+  assert.equal(sameTextAfter({}, { attachments: [{ name: 'x.pdf', url: 'https://medicina.unicz.it/scarica_allegato/9' }] }), true); // new files, same text
+  assert.equal(sameTextAfter({ body: 'Riga uno\n\n  Riga due' }, { body: 'Riga uno Riga due' }), true); // spaces and line breaks are not words
+  assert.equal(sameTextAfter({ body: null }, { body: '' }), true); // a missing body and an empty one read the same
+});
+
+// The real case (Fondazione, 2026-11): the sites paste the attachment link inside the text, and sometimes lose a space after it.
+test('wasSameTextSent: links inside the text are ignored', () => {
+  const link = (id) => `https://www.fondazioneumg.it/servizi/gestionedocumentale/visualizzadocumento.aspx?ID=${id}`; // attachment link
+  const first = { body: `Scarica (${link(5508)}) l'avviso e la domanda` }; // with the space
+  assert.equal(sameTextAfter(first, { body: `Scarica (${link(5511)}) l'avviso e la domanda` }), true); // only the link number changes
+  assert.equal(sameTextAfter(first, { body: `Scarica (${link(5511)})l'avviso e la domanda` }), true); // the space after the link is lost too
+  assert.equal(sameTextAfter(first, { body: `Scarica (${link(5511)})l'avviso e la nuova domanda` }), false); // one word added after the link
+});
+
+// Anything the reader would see as different keeps the normal message.
+test('wasSameTextSent: different words are a different notice', () => {
+  assert.equal(sameTextAfter({}, { body: 'Testo diverso' }), false); // other body
+  assert.equal(sameTextAfter({}, { title: 'Altro titolo' }), false); // other title
+  assert.equal(sameTextAfter({ body: 'Lezione in aula 5' }, { body: 'Lezione in aula 6' }), false); // numbers outside links count
+  assert.equal(sameTextAfter({ body: 'Lezione sospesa' }, { body: 'Lezione Sospesa' }), false); // upper case is not 100% the same
+  assert.equal(sameTextAfter({ body: 'Lezione sospesa' }, { body: 'Lezione sospesa.' }), false); // neither is punctuation
+  assert.equal(sameTextAfter({ title: 'Titolo', body: 'Testo' }, { title: 'TitoloTesto', body: '' }), false); // title and body are compared separately
+});
+
+// Only a message the group really received can be updated.
+test('wasSameTextSent: only sent messages of this group count', () => {
+  assert.equal(sameTextAfter({}, {}, { jid: 'other@g.us' }), false); // another group never read it
+  for (const status of ['failed', 'skipped', 'duplicate']) assert.equal(sameTextAfter({}, {}, { status }), false); // never reached the group as this notice
+  const d = db.openDb(':memory:'); // fresh DB
+  db.upsertNotices(d, 'infermieristica', [n(1, { title: 'Titolo', body: 'Testo' })], true); // one notice
+  assert.equal(db.wasSameTextSent(d, n(1).url, 'g@g.us'), false); // nothing sent at all
+  db.recordDelivery(d, n(1).url, 'g@g.us', 'sent'); // sent
+  assert.equal(db.wasSameTextSent(d, n(1).url, 'g@g.us'), false); // a notice is not an update of itself
+});
+
+// No time limit, but an older notice sent late (retry, !prova) is not an update of a newer one.
+test('wasSameTextSent: time', () => {
+  const d = db.openDb(':memory:'); // fresh DB
+  db.upsertNotices(d, 'infermieristica', [n(1, { title: 'Titolo', body: 'Testo' }), n(2, { title: 'Titolo', body: 'Testo' })], true); // twins
+  d.prepare('UPDATE notices SET first_seen = ? WHERE url = ?').run('2025-01-01T00:00:00.000Z', n(1).url); // the first is much older
+  db.recordDelivery(d, n(1).url, 'g@g.us', 'sent'); // sent back then
+  d.prepare('UPDATE deliveries SET at = ? WHERE url = ?').run('2025-01-01T00:01:00.000Z', n(1).url); // long before the 3-day duplicate window
+  assert.equal(db.wasSameTextSent(d, n(2).url, 'g@g.us'), true); // still the same text
+  db.recordDelivery(d, n(2).url, 'late@g.us', 'sent'); // the newer one reached this group first
+  assert.equal(db.wasSameTextSent(d, n(1).url, 'late@g.us'), false); // the older one is not its update
+});
+
 test('kv round trip', () => {
   const d = db.openDb(':memory:'); // fresh DB
   assert.equal(db.getStateValue(d, 'x'), null); // missing key

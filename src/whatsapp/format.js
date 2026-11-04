@@ -44,6 +44,9 @@ export const formatRomeDate = (isoDate) =>
 // Replace {placeholders} in one pass (values containing "{…}" are never expanded again).
 const fillPlaceholders = (line, values) => line.replace(PLACEHOLDER_PATTERN, (_, name) => values[name] ?? '');
 
+// Announce a message as the update of one the group already received; the message itself stays as it is.
+export const markAsUpdate = (message) => `Aggiornamento in:\n\n${message}`;
+
 // Compose the message: every template line, minus those whose placeholders are empty.
 export function formatNotice(notice, boardName, template = messageTemplate) {
   const body = stripWhatsAppMarkup(notice.body); // plain text body

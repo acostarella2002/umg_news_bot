@@ -291,6 +291,7 @@ Shows each target with the name of its group. `⚠️ bot non più nel gruppo` m
 - **School notice** (Medicina, SFN, DiGES) → the school group, if the school has one; otherwise every course group of that school.
 - **Ateneo / Fondazione** → their own groups.
 - **The same notice published twice** (different link, same title and same attachment links) reaches a group only once. If the attachment numbers differ (`scarica_allegato/N`), both are sent.
+- **The same text published again with new files** (different link, same title and body, links and spaces aside) is sent with `Aggiornamento in:` above the normal message.
 
 ### Message format
 
@@ -335,7 +336,7 @@ Every 6 days (`KEEPALIVE_DAYS`) the bot writes a reminder with a short status in
 | Command                 | Description                                                             |
 | ----------------------- | ----------------------------------------------------------------------- |
 | `npm ci`                | Installs the dependencies exactly at the locked versions.               |
-| `npm test`              | Runs the 72 automated tests (modules, security, end-to-end flow).       |
+| `npm test`              | Runs the 84 automated tests (modules, security, end-to-end flow).       |
 | `npm run lint`          | Checks the code with ESLint.                                            |
 | `npm run format:check`  | Checks formatting with Prettier (`npm run format` fixes it).            |
 | `npm run check:sources` | Checks every board live and reports the empty or unreachable ones.      |

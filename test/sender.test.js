@@ -1,8 +1,9 @@
 // Unit tests for src/whatsapp/sender.js with a fake WhatsApp socket.
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
-import { openDb, upsertNotices, linkGroup, setStateValue, pendingDeliveries, countSentLastHour } from '../src/db.js'; // storage
+import { openDb, upsertNotices, linkGroup, setStateValue, pendingDeliveries, countSentLastHour, recordDelivery } from '../src/db.js'; // storage
 import { createSender } from '../src/whatsapp/sender.js'; // module under test
+import { formatNotice } from '../src/whatsapp/format.js'; // the message as it is normally built
 
 const senderConfig = { sendMinDelayS: 8, sendMaxDelayS: 20, slowMinDelayS: 120, slowMaxDelayS: 180, maxSendsPerHour: 2 }; // tiny hourly cap for the test
 
@@ -142,6 +143,113 @@ test('skips duplicates without waiting', async () => {
   assert.equal(await s.sendNextMessage(), 'duplicate'); // second copy dropped
   assert.equal(await s.sendNextMessage(), 'idle'); // queue empty
   assert.equal(sock.calls.filter((c) => c[0] === 'msg').length, 1); // one message only
+});
+
+// Twin notice: same text under its own URL, with its own attachment (`file`), like a republication with new files.
+const twinNotice = (id, file = id) => ({
+  url: `https://diges.unicz.it/avviso/${id}`,
+  title: 'Posti letto',
+  body: 'Scarica il bando',
+  attachments: [{ name: 'bando.pdf', url: `https://diges.unicz.it/scarica_allegato/${file}` }],
+});
+// Sender on a fresh DB where the twins are queued for the given groups.
+const setupTwins = (twins, jids = ['g@g.us'], senderOptions = {}) => {
+  const db = openDb(':memory:'); // fresh DB
+  for (const jid of jids) linkGroup(db, 'giuri', jid); // mapping first
+  upsertNotices(db, 'giuri', twins, true); // queued oldest first
+  const sock = fakeSock(); // working socket
+  const sender = createSender({
+    db,
+    getSocket: () => sock,
+    targetNames: new Map(),
+    config: { ...senderConfig, maxSendsPerHour: 100 },
+    sleep: async () => {},
+    ...senderOptions,
+  });
+  return { db, sock, sender }; // ready
+};
+const sentTexts = (sock) => sock.calls.filter((call) => call[0] === 'msg').map((call) => call[2]); // texts really sent
+
+// A republication with new files: the label, then the message exactly as it is normally built.
+test('same text with new files is sent as an update', async () => {
+  const { sock, sender } = setupTwins([twinNotice(1), twinNotice(2)]); // two twins
+  assert.equal(await sender.sendNextMessage(), 'sent'); // the original
+  assert.equal(await sender.sendNextMessage(), 'sent'); // the republication is not dropped
+  assert.equal(await sender.sendNextMessage(), 'idle'); // nothing else
+  const [first, second] = sentTexts(sock); // both messages
+  assert.equal(first, formatNotice(twinNotice(1), 'giuri')); // no label on the original
+  assert.equal(second, `Aggiornamento in:\n\n${formatNotice(twinNotice(2), 'giuri')}`); // label plus the unchanged message, with its own link
+});
+
+// Every later copy says it once: labels never pile up.
+test('a third copy has one label only', async () => {
+  const { sock, sender } = setupTwins([twinNotice(1), twinNotice(2), twinNotice(3)]); // three twins
+  for (let step = 0; step < 3; step++) assert.equal(await sender.sendNextMessage(), 'sent'); // all sent
+  const labels = sentTexts(sock).map((text) => text.match(/Aggiornamento in:/g)?.length ?? 0); // labels per message
+  assert.deepEqual(labels, [0, 1, 1]); // never two
+});
+
+// Same title and same files within 3 days stay a pure duplicate: nothing new for the group.
+test('a duplicate is still dropped, not sent as an update', async () => {
+  const { sock, sender } = setupTwins([twinNotice(1, 'same'), twinNotice(2, 'same')]); // same attachment
+  assert.equal(await sender.sendNextMessage(), 'sent'); // the original
+  assert.equal(await sender.sendNextMessage(), 'duplicate'); // dropped
+  assert.equal(sentTexts(sock).length, 1); // one message only
+});
+
+// Each group is judged on what it received: the first copy for a group has no label.
+test('the label depends on the group', async () => {
+  const { db, sock, sender } = setupTwins([twinNotice(2)], ['a@g.us', 'b@g.us']); // one notice for two groups
+  recordDelivery(db, twinNotice(2).url, 'b@g.us', 'skipped'); // not for this group
+  upsertNotices(db, 'giuri', [twinNotice(1)], false); // the old twin was only seeded: never sent to anyone
+  assert.equal(await sender.sendNextMessage(), 'sent'); // group a
+  assert.equal(await sender.sendNextMessage(), 'idle'); // nothing else
+  assert.deepEqual(
+    sock.calls.filter((call) => call[0] === 'msg').map((call) => [call[1], call[2].includes('Aggiornamento in:')]),
+    [['a@g.us', false]],
+  ); // a seeded twin does not count
+  upsertNotices(db, 'giuri', [twinNotice(3)], true); // a real republication
+  assert.equal(await sender.sendNextMessage(), 'sent'); // group a got the original, so this is an update
+  assert.equal(await sender.sendNextMessage(), 'sent'); // group b never got it: a normal message
+  assert.deepEqual(
+    sock.calls
+      .filter((call) => call[0] === 'msg')
+      .slice(1)
+      .map((call) => [call[1], call[2].includes('Aggiornamento in:')])
+      .sort(),
+    [
+      ['a@g.us', true],
+      ['b@g.us', false],
+    ],
+  ); // one each
+});
+
+// A retry rebuilds the same message: the label survives a failed attempt, and the attempt counts only once.
+test('an update keeps its label after a failed attempt', async () => {
+  let now = 0; // fake clock
+  const { sock, sender } = setupTwins([twinNotice(1), twinNotice(2)], ['g@g.us'], { clock: () => now }); // two twins
+  assert.equal(await sender.sendNextMessage(), 'sent'); // the original
+  const realSend = sock.sendMessage; // working send
+  sock.sendMessage = async () => {
+    throw new Error('boom');
+  }; // WhatsApp fails once
+  assert.equal(await sender.sendNextMessage(), 'error'); // first attempt of the update
+  sock.sendMessage = realSend; // WhatsApp is back
+  now += 5 * 60_000; // retry time
+  assert.equal(await sender.sendNextMessage(), 'sent'); // second attempt
+  assert.deepEqual(
+    sentTexts(sock).map((text) => text.startsWith('Aggiornamento in:\n\n')),
+    [false, true],
+  ); // labelled, sent once
+});
+
+// An update is a normal message for the anti-ban rules: it counts for the hourly cap.
+test('an update counts for the hourly cap', async () => {
+  const { db, sender } = setupTwins([twinNotice(1), twinNotice(2), twinNotice(3)], ['g@g.us'], { config: senderConfig }); // cap of 2
+  assert.equal(await sender.sendNextMessage(), 'sent'); // the original
+  assert.equal(await sender.sendNextMessage(), 'sent'); // an update
+  assert.equal(countSentLastHour(db), 2); // both counted
+  assert.equal(await sender.sendNextMessage(), 'rate'); // cap reached
 });
 
 // Real failure instead of a mock: every write to the deliveries table fails, as on a full disk.
