@@ -139,6 +139,7 @@ const feedSetup = async (ids) => {
   agePages(db); // as if the pages had been there for a while
   return { db, pages, warnings, poll };
 };
+const realEdit = 'Nuovo testo con almeno cinque parole diverse'; // enough changed words to be announced
 const queuedUpdates = (db) => pendingDeliveries(db).filter((delivery) => delivery.isUpdate); // updates waiting to go
 // Poller on a fresh DB with two feeds of one target, linked to a group, already seeded.
 const twoFeedsSetup = async (firstFeed, secondFeed) => {
@@ -155,13 +156,13 @@ const twoFeedsSetup = async (firstFeed, secondFeed) => {
 test('a page moving up in a feed is queued as an update with its new text', async () => {
   const { db, pages, poll } = await feedSetup([1, 2, 3]); // seeded
   assert.equal((await poll()).updates, 0); // same order: nothing
-  pages[feedUrl] = feedOf([3, 1, 2], { 3: 'Testo 3 con il nuovo scorrimento' }); // page 3 edited
+  pages[feedUrl] = feedOf([3, 1, 2], { 3: realEdit }); // page 3 edited
   assert.equal((await poll()).updates, 1); // noticed
   assert.deepEqual(
     queuedUpdates(db).map((delivery) => delivery.url),
     [page(3)],
   ); // that code only
-  assert.equal(getNotice(db, page(3)).body, 'Testo 3 con il nuovo scorrimento'); // the message will show the page as it is now
+  assert.equal(getNotice(db, page(3)).body, realEdit); // the message will show the page as it is now
   assert.equal((await poll()).updates, 0); // the next read sees the same order: no repeat
   assert.equal(queuedUpdates(db).length, 1); // still one
 });
@@ -192,7 +193,7 @@ test('a new notice in two feeds of the same target is one message', async () => 
 test('one edit seen in two feeds is one update', async () => {
   const { db, pages, poll } = await twoFeedsSetup(feedOf([1, 2, 3]), feedOf([1, 2, 3])); // same pages
   agePages(db); // published long ago
-  pages[feedUrl] = pages[`${feedUrl}2`] = feedOf([3, 1, 2]); // page 3 edited, both feeds change
+  pages[feedUrl] = pages[`${feedUrl}2`] = feedOf([3, 1, 2], { 3: realEdit }); // page 3 edited, both feeds change
   assert.equal((await poll()).updates, 1); // one, not two
   assert.equal(queuedUpdates(db).length, 1); // one message
 });
@@ -205,7 +206,7 @@ test('feed order: baseline, and an empty read keeps it', async () => {
   assert.equal((await poll()).updates, 0); // baseline only
   pages[feedUrl] = '<rss></rss>'; // maintenance page
   await poll(); // empty read
-  pages[feedUrl] = feedOf([2, 3, 1]); // back to normal, with a real edit made meanwhile
+  pages[feedUrl] = feedOf([2, 3, 1], { 2: realEdit }); // back to normal, with a real edit made meanwhile
   assert.equal((await poll()).updates, 1); // noticed against the kept order
   assert.equal(queuedUpdates(db)[0].url, page(2)); // the right code
 });
@@ -356,4 +357,61 @@ test('the update of an Ateneo page reads the page again', async () => {
   assert.equal((await poll()).updates, 1); // its page is down, the group is still told
   assert.equal(getNotice(db, ateneoPage(2)).body, null); // nothing invented
   assert.equal(getNotice(db, ateneoPage(3)).body, 'Terzo scorrimento pubblicato'); // the other page is untouched
+});
+
+// A page back on top with a typo fixed: the text is refreshed, nobody is told, and the daily cap is not touched.
+test('a small edit refreshes the text without a message', async () => {
+  const { db, pages, poll } = await feedSetup([1, 2, 3]); // seeded
+  pages[feedUrl] = feedOf([1, 2, 3], { 3: 'Prima seconda terza' }); // same order: the feed text is not read
+  await poll(); // nothing moved
+  db.prepare('UPDATE notices SET body = ? WHERE url = ?').run('Lezione sospesa in aula', page(3)); // the text the group knows
+  pages[feedUrl] = feedOf([3, 1, 2], { 3: 'Lezione sospesa in aula.' }); // a dot added
+  assert.equal((await poll()).updates, 0); // silent
+  assert.equal(getNotice(db, page(3)).body, 'Lezione sospesa in aula.'); // but the next message is correct
+  assert.equal(db.prepare('SELECT COUNT(*) AS total FROM notice_updates').get().total, 0); // no cap used
+  pages[feedUrl] = feedOf([2, 3, 1], { 2: realEdit }); // another page, a real edit
+  assert.equal((await poll()).updates, 1); // the filter does not stop it
+});
+
+// A new file is the point of the updates: even with the same text it is announced.
+test('a new file is announced even with the same text', async () => {
+  const withFile = (name) => `Testo uguale &lt;a href="https://www.fondazioneumg.it/doc/${name}.pdf"&gt;Allegato&lt;/a&gt;`; // the feed text holds its files
+  const { db, pages, poll } = await feedSetup([1, 2]); // seeded
+  db.prepare('UPDATE notices SET body = ?, attachments = ? WHERE url = ?').run(
+    'Testo uguale Allegato',
+    JSON.stringify([{ name: 'Allegato', url: 'https://www.fondazioneumg.it/doc/a.pdf' }]),
+    page(2),
+  ); // what the bot knows
+  pages[feedUrl] = feedOf([2, 1], { 2: withFile('b') }); // same words, another file
+  assert.equal((await poll()).updates, 1); // announced
+  db.prepare("UPDATE notice_updates SET at = '2026-01-01T00:00:00.000Z'").run(); // long after that
+  pages[feedUrl] = feedOf([1, 2], { 1: 'Testo 1' }); // the other page back on top, unchanged
+  assert.equal((await poll()).updates, 0); // nothing new in it
+});
+
+// A real page that cannot be read: nothing tells it was small, so the group is told.
+test('an edited page that cannot be read is still announced', async () => {
+  const { db, pages, poll } = await ateneoSetup([1, 2]); // seeded
+  agePages(db); // published long ago
+  db.prepare('UPDATE notices SET body = ? WHERE url = ?').run('Testo noto', ateneoPage(2)); // a known text
+  pages[feedUrl] = ateneoFeedOf([2, 1]); // edited, and its page is down
+  assert.equal((await poll()).updates, 1); // told
+  assert.equal(getNotice(db, ateneoPage(2)).body, 'Testo noto'); // the old text stays
+});
+
+// Same text on the page after a move: the Ateneo case of the filter.
+test('an Ateneo page moving up with the same text and files is silent', async () => {
+  const { db, pages, poll } = await ateneoSetup([1, 2]); // seeded
+  agePages(db); // published long ago
+  db.prepare('UPDATE notices SET body = ?, attachments = ? WHERE url = ?').run(
+    'Avviso sugli scorrimenti',
+    JSON.stringify([{ name: 'File', url: 'http://web.unicz.it/uploads/primo.pdf' }]),
+    ateneoPage(2),
+  ); // what the bot knows
+  pages[feedUrl] = ateneoFeedOf([2, 1]); // back on top
+  pages[ateneoPage(2)] = ateneoDetail('Avviso sugli scorrimenti', 'primo'); // nothing different
+  assert.equal((await poll()).updates, 0); // silent
+  db.prepare('UPDATE kv SET v = ?').run(JSON.stringify([ateneoPage(1), ateneoPage(2)])); // back to the old order, to move it up again
+  pages[ateneoPage(2)] = ateneoDetail('Avviso sugli scorrimenti', 'secondo'); // a new file
+  assert.equal((await poll()).updates, 1); // announced
 });

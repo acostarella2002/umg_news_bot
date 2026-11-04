@@ -180,6 +180,35 @@ test('wasSameTextSent: time', () => {
   assert.equal(db.wasSameTextSent(d, n(1).url, 'late@g.us'), false); // the older one is not its update
 });
 
+// The owner's rule: a new file, or at least 5 changed words; anything less is a typo fix.
+test('isWorthAnnouncing', () => {
+  const file = (name) => ({ name, url: `https://x.unicz.it/${name}.pdf` }); // an attachment
+  const notice = (body, attachments = [], title = 'Titolo') => ({ title, body, attachments }); // the fields compared
+  const worth = (before, after) => db.isWorthAnnouncing(before, after); // shorter
+  const base = 'uno due tre quattro cinque sei sette otto'; // eight words
+  assert.equal(worth(notice(base), notice(base)), false); // nothing changed
+  assert.equal(worth(notice(base), notice('uno due tre quattro cinque sei sette otto.')), false); // a typo
+  assert.equal(worth(notice(base), notice('UNO DUE TRE QUATTRO cinque sei sette otto')), false); // 4 words: one short of the limit
+  assert.equal(worth(notice(base), notice('UNO DUE TRE QUATTRO CINQUE sei sette otto')), true); // exactly 5 replaced
+  assert.equal(worth(notice(base), notice(`${base} a b c d`)), false); // 4 added
+  assert.equal(worth(notice(base), notice(`${base} a b c d e`)), true); // 5 added
+  assert.equal(worth(notice(base), notice('uno due tre')), true); // 5 removed
+  assert.equal(worth(notice('a a a a a'), notice('a')), false); // 4 removed: repeated words are counted one by one
+  assert.equal(worth(notice(base), notice('otto sette sei cinque quattro tre due uno')), false); // same words: nothing to read again
+  assert.equal(worth(notice(base), notice(base, [], 'Un titolo nuovo di zecca davvero')), true); // the title counts too
+  assert.equal(
+    worth(notice(base), notice(`${base} https://x.unicz.it/1 https://x.unicz.it/2 https://x.unicz.it/3 https://x.unicz.it/4 https://x.unicz.it/5`)),
+    false,
+  ); // links are not words
+  assert.equal(worth(notice(base, [file('a')]), notice(base, [file('a'), file('b')])), true); // a new file
+  assert.equal(worth(notice(base, [file('a')]), notice(base, [file('b')])), true); // a replaced file
+  assert.equal(worth(notice(base, [file('a'), file('b')]), notice(base, [file('b'), file('a')])), false); // same files
+  assert.equal(worth(notice(base, [file('a'), file('b')]), notice(base, [file('a')])), false); // a file removed, nothing to read
+  assert.equal(worth(notice(null), notice(base)), true); // never read: nothing to compare
+  assert.equal(worth(notice(null), notice(null)), true); // still unknown
+  assert.equal(worth(notice(''), notice('')), false); // known to be empty
+});
+
 // DB with one old notice linked to g@g.us, ready for page updates.
 const updateSetup = () => {
   const d = db.openDb(':memory:'); // fresh DB

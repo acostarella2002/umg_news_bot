@@ -191,10 +191,32 @@ export function wasIdenticalNoticeSent(db, url, jid) {
 }
 
 // The words of a text: links and spaces are ignored, because the sites paste the new attachment's link inside the text and sometimes lose a space after it.
-const wordsOf = (text) =>
-  String(text ?? '')
-    .replace(/https?:\/\/[^\s)]+/g, '') // links
-    .replace(/\s+/g, ''); // spaces and line breaks
+const withoutLinks = (text) => String(text ?? '').replace(/https?:\/\/[^\s)]+/g, ''); // links
+const wordsOf = (text) => withoutLinks(text).replace(/\s+/g, ''); // spaces and line breaks
+
+// Changed words from this many up are worth a message; fewer are a typo fix (decided by the owner on 2026-11-04).
+const MIN_CHANGED_WORDS = 5;
+
+// How many words differ between two texts, in any position: a replaced word counts once.
+function countChangedWords(before, after) {
+  const remaining = new Map(); // word -> how many of it the old text still has unmatched
+  for (const word of withoutLinks(before).split(/\s+/).filter(Boolean)) remaining.set(word, (remaining.get(word) ?? 0) + 1);
+  let added = 0; // words of the new text the old one does not have
+  for (const word of withoutLinks(after).split(/\s+/).filter(Boolean)) {
+    if (remaining.get(word) > 0) remaining.set(word, remaining.get(word) - 1);
+    else added++;
+  }
+  const removed = [...remaining.values()].reduce((total, count) => total + count, 0); // words of the old text gone
+  return Math.max(added, removed);
+}
+
+// True when an edit deserves a message: a new file or enough changed words. With no stored text there is nothing to compare, so the group is told.
+export function isWorthAnnouncing(before, after) {
+  if (before.body == null) return true; // never read: it may hold anything
+  const knownFiles = new Set(before.attachments.map((attachment) => attachment.url)); // files the bot already knew
+  if (after.attachments.some((attachment) => !knownFiles.has(attachment.url))) return true; // e.g. a new scorrimento
+  return countChangedWords(`${before.title} ${before.body}`, `${after.title} ${after.body}`) >= MIN_CHANGED_WORDS; // a typo fix stays silent
+}
 
 // True when the group already received an earlier notice with the same words under another URL: this one is its update (e.g. new files). No time limit.
 export function wasSameTextSent(db, url, jid) {

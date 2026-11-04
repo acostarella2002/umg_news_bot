@@ -11,6 +11,7 @@ import {
   listGroupLinks,
   getNotice,
   recordNoticeUpdate,
+  isWorthAnnouncing,
 } from './db.js'; // storage
 
 // More new or edited notices than this in one read of a board may be a re-listing (site moved, URLs changed, list re-sorted), not real news.
@@ -61,12 +62,14 @@ const findEditedNotices = (db, notices, movedUp) =>
     return stored && (movedUp.includes(notice.url) || (stored.updated && notice.updated > stored.updated)); // a page never seen is a new notice, not an update
   });
 
-// Store the page as it is now, so the message shows it; on failure the old text stays and the group is still told to look at the page.
+// Store the page as it is now, so the message shows it; returns false when it could not be read and the old text stays.
 async function refreshEditedNotice({ db, notice, fetchText, log }) {
   try {
     saveDetail(db, notice.url, notice.body == null ? parseDetail(await fetchText(notice.url), notice.url) : notice); // only some feeds carry the whole text
+    return true; // read
   } catch (err) {
     log.warn?.({ url: notice.url, err: err.message }, 'detail failed'); // public URL only
+    return false; // what changed stays unknown
   }
 }
 
@@ -84,7 +87,7 @@ async function runWithConcurrency(tasks, concurrency, runTask) {
 export async function pollOnce({ db, sources, fetchText = defaultFetchText, log = console, detailLimit = 20 }) {
   const summary = { sources: 0, errors: 0, added: 0, details: 0, updates: 0 }; // counters
   const targetsWithGroup = new Set(listGroupLinks(db).map((groupLink) => groupLink.target)); // targets with a WhatsApp group right now
-  const editedPages = new Map(); // URL -> targets of every board listing the page in this cycle
+  const editedPages = new Map(); // URL -> { before: the stored notice, targets: every board listing the page in this cycle, isUnread: the page could not be read }
   await runWithConcurrency(
     buildJobs(sources, (targetId) => targetsWithGroup.has(targetId)),
     CONCURRENT_FETCHES,
@@ -97,6 +100,13 @@ export async function pollOnce({ db, sources, fetchText = defaultFetchText, log 
         const currentOrder = notices.slice(0, FEED_ORDER_LENGTH).map((notice) => notice.url); // top of the list, by code
         const movedUp = job.isFeed ? findMovedUp(JSON.parse(getStateValue(db, orderKey) ?? '[]'), currentOrder) : []; // only feeds show edits by their order
         const editedNotices = findEditedNotices(db, notices, movedUp); // read before the upsert moves the stored dates
+        const isEditBurst = editedNotices.length > MAX_NEW_PER_BOARD; // a re-sorted site must not flood the groups
+        if (isEditBurst)
+          log.warn?.({ url: job.url, err: `${editedNotices.length} pages changed at once: no update sent` }, 'source burst'); // public URL only
+        else
+          for (const notice of editedNotices)
+            if (!editedPages.has(notice.url)) editedPages.set(notice.url, { before: getNotice(db, notice.url), targets: new Set(), isUnread: false }); // first board to notice in this cycle
+        for (const notice of notices) for (const target of job.targets) editedPages.get(notice.url)?.targets.add(target); // also the boards reading the page after the stored date moved
         const unseenCount = notices.filter((notice) => !isNoticeKnown(db, notice.url)).length; // URLs never seen before
         const isBurst = isSeeded && unseenCount > MAX_NEW_PER_BOARD; // many at once: tell real news from re-listed old notices by date
         const isRecent = (notice) => !isBurst || Date.parse(notice.published) >= Date.now() - RECENT_WINDOW_MS; // no date counts as old
@@ -115,12 +125,11 @@ export async function pollOnce({ db, sources, fetchText = defaultFetchText, log 
         ); // old re-listed notices: RSS only
         if (!isSeeded && notices.length) setStateValue(db, seedKey, new Date().toISOString()); // an empty first read (maintenance page, broken layout) is not a seed
         if (job.isFeed && notices.length) setStateValue(db, orderKey, JSON.stringify(currentOrder)); // an empty read keeps the old order
-        const isEditBurst = editedNotices.length > MAX_NEW_PER_BOARD; // a re-sorted site must not flood the groups
-        if (isEditBurst)
-          log.warn?.({ url: job.url, err: `${editedNotices.length} pages changed at once: no update sent` }, 'source burst'); // public URL only
-        else for (const notice of editedNotices) if (!editedPages.has(notice.url)) editedPages.set(notice.url, new Set()); // first board to notice in this cycle
-        for (const notice of notices) for (const target of job.targets) editedPages.get(notice.url)?.add(target); // also the boards reading the page after the stored date moved
-        if (!isEditBurst) for (const notice of editedNotices) await refreshEditedNotice({ db, notice, fetchText, log }); // last: this wait lets the other boards run
+        if (!isEditBurst)
+          for (const notice of editedNotices) {
+            const isRead = await refreshEditedNotice({ db, notice, fetchText, log }); // last: this wait lets the other boards run
+            if (!isRead) editedPages.get(notice.url).isUnread = true; // the group is still told to look at the page
+          }
         summary.sources++; // success
       } catch (err) {
         summary.errors++; // one broken board never stops the others
@@ -128,8 +137,10 @@ export async function pollOnce({ db, sources, fetchText = defaultFetchText, log 
       }
     },
   );
-  for (const [url, targets] of editedPages)
-    if (recordNoticeUpdate(db, url, [...targets])) {
+  for (const [url, { before, targets, isUnread }] of editedPages)
+    if (!isUnread && !isWorthAnnouncing(before, getNotice(db, url)))
+      log.info?.({ url }, 'small page edit not announced'); // the text is already fresh, the daily cap is not touched; public URL only
+    else if (recordNoticeUpdate(db, url, [...targets])) {
       summary.updates++; // queued for the groups
       log.info?.({ url }, 'page update queued'); // public URL only
     }
