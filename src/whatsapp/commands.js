@@ -14,10 +14,10 @@ import {
   queueLatestNoticePerGroup,
   cancelPendingDeliveries,
 } from '../db.js'; // storage
-import { formatNotice } from './format.js'; // preview rendering
+import { formatNotice, formatRomeDate } from './format.js'; // preview rendering and Italian time
 
 // "39333…:12@s.whatsapp.net" -> "39333…@s.whatsapp.net" (drop device suffix).
-const withoutDeviceSuffix = (jid) => (jid ? `${jid.split('@')[0].split(':')[0]}@${jid.split('@')[1]}` : ''); // normalized user JID
+export const withoutDeviceSuffix = (jid) => (jid ? `${jid.split('@')[0].split(':')[0]}@${jid.split('@')[1]}` : ''); // normalized user JID
 
 // True when the message was written by the account itself in its self chat (phone-number or LID form).
 export const isSelfChat = (message, user) =>
@@ -133,7 +133,7 @@ export async function handleCommand(text, { db, sock, targetNames, session, grou
     case '!stato':
       return [
         '📊 *Stato*', // header
-        `Ultimo controllo: ${getStateValue(db, 'last_poll') ?? 'mai'}`, // last poll time
+        `Ultimo controllo: ${formatRomeDate(getStateValue(db, 'last_poll')) || 'mai'}`, // last poll, in Italian time
         `In coda: ${pendingDeliveries(db).length}`, // pending messages
         `Inviati ultima ora: ${countSentLastHour(db)}`, // rate usage
         `Falliti ultime 24h: ${countFailedLastDay(db)}`, // broken links show up here (bot removed, not admin…)

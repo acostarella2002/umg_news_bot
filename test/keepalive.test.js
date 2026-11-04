@@ -1,11 +1,8 @@
 // Unit tests for src/whatsapp/keepalive.js.
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
-import { openDb } from '../src/db.js'; // storage
-import { sendKeepaliveIfDue, selfChatJid } from '../src/whatsapp/keepalive.js'; // module under test
-
-// Device suffix is removed from the account JID.
-test('selfChatJid', () => assert.equal(selfChatJid({ id: '393330000000:7@s.whatsapp.net' }), '393330000000@s.whatsapp.net')); // bare JID
+import { openDb, setStateValue } from '../src/db.js'; // storage
+import { sendKeepaliveIfDue } from '../src/whatsapp/keepalive.js'; // module under test
 
 // Sends once, then waits for `days` before sending again; never sends while offline.
 test('sendKeepaliveIfDue schedule', async () => {
@@ -20,4 +17,7 @@ test('sendKeepaliveIfDue schedule', async () => {
   assert.equal(sent.length, 2); // exactly two messages
   assert.ok(sent.every(([jid]) => jid === '393330000000@s.whatsapp.net')); // only to the self chat
   assert.match(sent[0][1], /telefono principale/); // reminder text
+  setStateValue(db, 'last_poll', '2026-11-04T17:40:00.000Z'); // UTC in the DB
+  await sendKeepaliveIfDue({ db, sock, intervalDays: 7, now: t0 + 14 * 864e5 }); // next reminder
+  assert.match(sent[2][1], /Ultimo controllo bacheche: 04\/11\/2026, 18:40/); // Italian time
 });

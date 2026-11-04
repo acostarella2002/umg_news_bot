@@ -49,8 +49,8 @@ setInterval(poll, config.pollMinutes * 60_000); // then periodically
 if (config.waEnabled) {
   const { startWhatsApp } = await import('./whatsapp/client.js'); // loaded only when needed
   const { createSender } = await import('./whatsapp/sender.js'); // delivery queue
-  const { handleCommand, extractMessageText, autoLinkGroups, formatAutoLinkReport } = await import('./whatsapp/commands.js'); // owner commands
-  const { sendKeepaliveIfDue, selfChatJid } = await import('./whatsapp/keepalive.js'); // weekly reminder
+  const { handleCommand, extractMessageText, autoLinkGroups, formatAutoLinkReport, withoutDeviceSuffix } = await import('./whatsapp/commands.js'); // owner commands
+  const { sendKeepaliveIfDue } = await import('./whatsapp/keepalive.js'); // weekly reminder
   const commandSession = {}; // command session state (last !gruppi listing)
   const whatsapp = startWhatsApp({
     authDir: join(config.dataDir, 'wa-auth'), // session folder
@@ -58,12 +58,12 @@ if (config.waEnabled) {
     log, // logger
     onMessage: async (message, sock) => {
       const reply = await handleCommand(extractMessageText(message), { db, sock, targetNames, session: commandSession, groupNamesByTarget }); // run command
-      if (reply) await sock.sendMessage(selfChatJid(sock.user), { text: reply }); // answer in the self chat only
+      if (reply) await sock.sendMessage(withoutDeviceSuffix(sock.user?.id), { text: reply }); // answer in the self chat only
     },
     // On every connection: link targets to the groups named like them (once per target), then tell the owner.
     onOpen: async (sock) => {
       const result = await autoLinkGroups({ db, sock, groupNamesByTarget, force: false }); // first-time links only
-      if (result.linked.length) await sock.sendMessage(selfChatJid(sock.user), { text: formatAutoLinkReport(result) }); // silent when nothing changed
+      if (result.linked.length) await sock.sendMessage(withoutDeviceSuffix(sock.user?.id), { text: formatAutoLinkReport(result) }); // silent when nothing changed
     },
   });
   whatsappStatus = whatsapp.getStatus; // /health now reports the real connection state

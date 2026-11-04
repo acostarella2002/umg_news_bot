@@ -1,8 +1,16 @@
 // Unit tests for src/whatsapp/commands.js with a fake socket.
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
-import { openDb, listGroupLinks, getStateValue, upsertNotices, linkGroup } from '../src/db.js'; // storage
-import { handleCommand, isSelfChat, extractMessageText, normalizeGroupName, autoLinkGroups, normalizeTargetId } from '../src/whatsapp/commands.js'; // module under test
+import { openDb, listGroupLinks, getStateValue, setStateValue, upsertNotices, linkGroup } from '../src/db.js'; // storage
+import {
+  handleCommand,
+  isSelfChat,
+  extractMessageText,
+  normalizeGroupName,
+  autoLinkGroups,
+  normalizeTargetId,
+  withoutDeviceSuffix,
+} from '../src/whatsapp/commands.js'; // module under test
 
 const user = { id: '393330000000:5@s.whatsapp.net', lid: '123456:5@lid' }; // the bot account (fake number)
 const names = new Map([
@@ -17,6 +25,24 @@ const sock = {
     c: { id: '999@g.us', subject: 'UMG automated news', isCommunity: true }, // community parent
   }),
 };
+
+// Device suffix is removed from an account JID, in both forms; no JID gives an empty string.
+test('withoutDeviceSuffix', () => {
+  assert.equal(withoutDeviceSuffix(user.id), '393330000000@s.whatsapp.net'); // phone-number form
+  assert.equal(withoutDeviceSuffix(user.lid), '123456@lid'); // LID form
+  assert.equal(withoutDeviceSuffix(undefined), ''); // not connected
+});
+
+// !stato shows the last poll in Italian time, in winter and in summer; the DB keeps UTC.
+test('!stato uses Italian time', async () => {
+  const db = openDb(':memory:'); // fresh DB
+  const ctx = { db, sock, targetNames: names, session: {} }; // command context
+  assert.match(await handleCommand('!stato', ctx), /Ultimo controllo: mai/); // never polled
+  setStateValue(db, 'last_poll', '2026-11-04T17:40:00.000Z'); // winter: UTC+1
+  assert.match(await handleCommand('!stato', ctx), /Ultimo controllo: 04\/11\/2026, 18:40/); // not 17:40
+  setStateValue(db, 'last_poll', '2026-07-01T10:00:00.000Z'); // summer: UTC+2
+  assert.match(await handleCommand('!stato', ctx), /Ultimo controllo: 01\/07\/2026, 12:00/); // not 10:00
+});
 
 // Only fromMe messages in the self chat count, in both JID forms.
 test('isSelfChat', () => {

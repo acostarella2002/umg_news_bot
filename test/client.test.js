@@ -2,7 +2,7 @@
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
 import { DisconnectReason } from '@whiskeysockets/baileys'; // real status codes
-import { reconnectDelay, isLinked, isSignalSessionLog } from '../src/whatsapp/client.js'; // module under test
+import { reconnectDelay, isLinked, isSignalSessionLog, requestAndLogPairingCode } from '../src/whatsapp/client.js'; // module under test
 
 // Logout needs a human, a second instance gets a long pause, everything else uses the backoff.
 test('reconnectDelay', () => {
@@ -12,6 +12,8 @@ test('reconnectDelay', () => {
   assert.equal(reconnectDelay(DisconnectReason.restartRequired, 5000), 5000); // normal after pairing
   assert.equal(reconnectDelay(DisconnectReason.connectionLost, 20_000), 20_000); // network hiccup
   assert.equal(reconnectDelay(undefined, 5000), 5000); // unknown reason
+  assert.equal(reconnectDelay(DisconnectReason.forbidden, 5000), null); // account restricted: stop
+  assert.equal(reconnectDelay(DisconnectReason.forbidden, 5000, false), null); // also before the first link
 });
 
 // A QR-linked session keeps registered: false for ever (seen in production): a real logout must still stop the bot and keep the session folder.
@@ -20,6 +22,19 @@ test('isLinked', () => {
   assert.equal(isLinked(qrLinked), true); // linked
   assert.equal(reconnectDelay(DisconnectReason.loggedOut, 5000, isLinked(qrLinked)), null); // needs a human
   assert.equal(isLinked({ registered: false, me: { id: 'x' } }), false); // pairing code asked but never entered
+});
+
+// A failed pairing request is logged without phone numbers, returns false so the next QR asks again, and never throws.
+test('requestAndLogPairingCode', async () => {
+  const logged = []; // recorded log lines
+  const log = { info: (line) => logged.push(line), error: (fields, line) => logged.push(`${line} ${fields.err}`) }; // fake logger
+  const working = { requestPairingCode: async () => 'ABCD1234' }; // fake socket
+  assert.equal(await requestAndLogPairingCode(working, '393330000000', log), true); // asked once
+  assert.match(logged[0], /PAIRING CODE: ABCD1234/); // the owner can read it
+  const closed = { requestPairingCode: async () => Promise.reject(new Error('closed while asking for 393330000000')) }; // socket gone
+  assert.equal(await requestAndLogPairingCode(closed, '393330000000', log), false); // no unhandled rejection
+  assert.match(logged[1], /pairing code request failed closed while asking for \[number\]/); // logged
+  assert.ok(!logged[1].includes('393330000000')); // number scrubbed
 });
 
 // libsignal session dumps (with private keys) are dropped from the console; other messages pass.

@@ -1,0 +1,34 @@
+UMG News Bot License
+
+Copyright (c) 2026 UMG News Bot contributors
+
+Permission is granted, free of charge, to any person who obtains a copy of this
+software to use it, run it, copy it and share it, under these conditions:
+
+1. Unchanged code. Whoever reuses or shares this software, in whole or in part,
+   must reproduce its code exactly as it is, without changes. The values in the
+   .env file and the files in the config/ folder are settings, not code, and may
+   be changed.
+
+2. Tag. Whoever reuses or shares this software must show the tag
+   primaverastudentesca in a visible place of the project, page or product where
+   it is reused.
+
+3. Notice. This copyright notice and this license must be included in every copy.
+
+Any right not granted here is reserved. In particular, sharing a modified version
+of the code requires written permission from the copyright holders.
+
+Parts not covered by this license:
+- the files in .claude/skills/, which keep their own license
+  (see .claude/skills/ponytail/LICENSE);
+- the pages saved in test/fixtures/, which belong to their publishers and are kept
+  only to test the parsers;
+- the dependencies installed by npm, which keep their own licenses.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

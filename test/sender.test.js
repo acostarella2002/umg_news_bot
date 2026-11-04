@@ -1,7 +1,7 @@
 // Unit tests for src/whatsapp/sender.js with a fake WhatsApp socket.
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
-import { openDb, upsertNotices, linkGroup, setStateValue, pendingDeliveries } from '../src/db.js'; // storage
+import { openDb, upsertNotices, linkGroup, setStateValue, pendingDeliveries, countSentLastHour } from '../src/db.js'; // storage
 import { createSender } from '../src/whatsapp/sender.js'; // module under test
 
 const senderConfig = { sendMinDelayS: 8, sendMaxDelayS: 20, slowMinDelayS: 120, slowMaxDelayS: 180, maxSendsPerHour: 2 }; // tiny hourly cap for the test
@@ -142,4 +142,94 @@ test('skips duplicates without waiting', async () => {
   assert.equal(await s.sendNextMessage(), 'duplicate'); // second copy dropped
   assert.equal(await s.sendNextMessage(), 'idle'); // queue empty
   assert.equal(sock.calls.filter((c) => c[0] === 'msg').length, 1); // one message only
+});
+
+// Real failure instead of a mock: every write to the deliveries table fails, as on a full disk.
+const fillDisk = (db) => db.exec("CREATE TRIGGER disk_full BEFORE INSERT ON deliveries BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END"); // writes fail
+const freeDisk = (db) => db.exec('DROP TRIGGER disk_full'); // writes work again
+const countMessages = (sock) => sock.calls.filter((call) => call[0] === 'msg').length; // messages really sent
+
+// A message delivered while the disk is full is never sent again, counts for the hourly cap, and is saved when space comes back.
+test('full disk: sent messages are not repeated', async () => {
+  const db = setup(3); // three pending
+  const sock = fakeSock(); // working socket
+  const s = createSender({ db, getSocket: () => sock, targetNames: new Map(), config: senderConfig, sleep: async () => {} }); // hourly cap of 2
+  fillDisk(db); // from now on nothing can be written
+  assert.equal(await s.sendNextMessage(), 'sent'); // 1st message delivered
+  assert.equal(await s.sendNextMessage(), 'sent'); // the 2nd notice, not the 1st again
+  assert.equal(await s.sendNextMessage(), 'rate'); // cap reached although the DB counts nothing
+  assert.equal(countSentLastHour(db), 0); // the DB really saw nothing
+  assert.equal(countMessages(sock), 2); // no repeats
+  freeDisk(db); // space is back
+  assert.equal(await s.sendNextMessage(), 'rate'); // the two rows are saved, the cap still holds
+  assert.equal(countSentLastHour(db), 2); // written
+  assert.equal(pendingDeliveries(db).length, 1); // only the third notice is left
+  assert.equal(countMessages(sock), 2); // still no repeats
+});
+
+// Memory stays bounded: beyond the limit the oldest remembered message is forgotten first.
+test('full disk: the oldest remembered message is washed out', async () => {
+  const db = setup(3); // three pending
+  const sock = fakeSock(); // working socket
+  const s = createSender({
+    db,
+    getSocket: () => sock,
+    targetNames: new Map(),
+    config: { ...senderConfig, maxSendsPerHour: 100 },
+    sleep: async () => {},
+    maxUnsavedSends: 2,
+  });
+  fillDisk(db); // nothing can be written
+  for (let step = 0; step < 3; step++) assert.equal(await s.sendNextMessage(), 'sent'); // the third send pushes out the first
+  freeDisk(db); // space is back
+  assert.equal(await s.sendNextMessage(), 'sent'); // the washed-out notice looks unsent: this is the price of the limit
+  assert.equal(countMessages(sock), 4); // exactly that one repeat
+  assert.equal(pendingDeliveries(db).length, 0); // queue clean
+});
+
+// The "stopped typing" signal is only cosmetic: its failure after the send must not repeat the message.
+test('a presence failure after the send does not repeat the message', async () => {
+  const db = setup(1); // one pending
+  const sock = fakeSock(); // working socket
+  sock.sendPresenceUpdate = async (presence) => {
+    if (presence === 'paused') throw new Error('connection closed'); // the socket dies right after the send
+  };
+  const s = createSender({ db, getSocket: () => sock, targetNames: new Map(), config: senderConfig, sleep: async () => {} }); // sender
+  assert.equal(await s.sendNextMessage(), 'sent'); // it did leave
+  assert.equal(await s.sendNextMessage(), 'idle'); // nothing to retry
+  assert.equal(countMessages(sock), 1); // one message only
+});
+
+// A failing step (here: a duplicate that cannot be recorded on a full disk) must not end the loop.
+test('run survives a failing step', async () => {
+  const db = openDb(':memory:'); // fresh DB
+  linkGroup(db, 'giuri', 'g@g.us'); // mapping first
+  upsertNotices(
+    db,
+    'giuri',
+    ['1', '2'].map((id) => ({ url: `https://diges.unicz.it/avviso/${id}`, title: 'Stesso titolo', body: 'b' })),
+    true,
+  ); // twins
+  const sock = fakeSock(); // working socket
+  const logged = []; // recorded errors
+  const stop = new AbortController(); // ends the endless loop
+  let pauses = 0; // loop iterations seen
+  const sleep = async (ms) => {
+    if (ms === 1500) return; // typing time (random = 0)
+    pauses++; // one step done
+    if (pauses === 1) db.exec("CREATE TRIGGER disk_full BEFORE INSERT ON deliveries BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END"); // disk fills after the first send
+    if (pauses === 2) stop.abort(); // the loop got past the failing step
+  };
+  const s = createSender({
+    db,
+    getSocket: () => sock,
+    targetNames: new Map(),
+    config: senderConfig,
+    log: { error: (fields) => logged.push(fields.err) },
+    sleep,
+    random: () => 0,
+  });
+  await s.run(stop.signal); // must return, not throw
+  assert.equal(pauses, 2); // both steps ran
+  assert.match(logged[0], /disk is full/); // the failure is visible in the logs
 });

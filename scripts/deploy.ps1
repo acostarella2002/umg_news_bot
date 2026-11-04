@@ -1,9 +1,10 @@
 # Deploy this folder to the Oracle server: upload, extract, rebuild and restart the bot (the server keeps its own .env and data/).
 param(
-  [string]$Server = '<server-IP>', # public IP of the Oracle VM
+  [string]$Server = $env:UMG_SERVER_IP, # public IP of the Oracle VM, kept only on this PC (see README)
   [string]$Key = "$HOME\.ssh\oracle_umg" # private SSH key created during the server setup
 )
 $ErrorActionPreference = 'Stop' # stop at the first PowerShell error
+if (-not $Server) { throw 'server IP missing: set the UMG_SERVER_IP variable (see README) or pass -Server' }
 $root = Split-Path $PSScriptRoot -Parent # project folder
 $archive = Join-Path $env:TEMP 'umg-news-bot.tgz' # temporary archive
 $tar = Join-Path $env:SystemRoot 'System32\tar.exe' # Windows tar (Git's GNU tar mishandles C:\ paths)

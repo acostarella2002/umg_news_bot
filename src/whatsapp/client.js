@@ -22,10 +22,26 @@ const MAX_RETRY_MS = 300_000;
 // True once a phone has linked this session. creds.registered cannot be used: Baileys sets it only in the pairing-code flow, so it stays false after a QR link.
 export const isLinked = (creds) => Boolean(creds.account);
 
-// Milliseconds to wait before reconnecting after a close with this status code; null = never (a human must relink).
+// Milliseconds to wait before reconnecting after a close with this status code; null = never (a human must act).
 // A logout before the first link only means the code/QR expired unused: retry with a fresh session.
-export const reconnectDelay = (statusCode, retryMs, linked = true) =>
-  statusCode === DisconnectReason.loggedOut ? (linked ? null : retryMs) : statusCode === DisconnectReason.connectionReplaced ? REPLACED_PAUSE_MS : retryMs;
+// 403 (forbidden) means WhatsApp restricted the account: retrying can only make it worse, so it always stops, like a logout.
+export const reconnectDelay = (statusCode, retryMs, linked = true) => {
+  if (statusCode === DisconnectReason.forbidden) return null; // needs a human
+  if (statusCode === DisconnectReason.loggedOut) return linked ? null : retryMs; // needs a human, unless nothing was linked yet
+  return statusCode === DisconnectReason.connectionReplaced ? REPLACED_PAUSE_MS : retryMs; // long pause against the other instance, or backoff
+};
+
+// Ask for a pairing code and log it; false when the request failed, so the next QR event asks again. A failure here must never end the process.
+export async function requestAndLogPairingCode(sock, pairingNumber, log) {
+  try {
+    const pairingCode = await sock.requestPairingCode(pairingNumber); // 8-character code
+    log.info(`PAIRING CODE: ${pairingCode}  ->  on the bot phone: WhatsApp Business > Linked devices > Link with phone number`); // shown once in the logs
+    return true;
+  } catch (err) {
+    log.error({ err: redact(err.message) }, 'pairing code request failed'); // e.g. the socket closed meanwhile
+    return false;
+  }
+}
 
 // Start the client; returns getSocket() (live socket or null while disconnected) and getStatus() for /health.
 export function startWhatsApp({ authDir, pairingNumber, log, onMessage, onOpen }) {
@@ -73,13 +89,8 @@ export function startWhatsApp({ authDir, pairingNumber, log, onMessage, onOpen }
       }
       if (qr && !linked && pairingNumber && !pairingCodeRequested) {
         // not linked yet: use a pairing code instead of a QR
-        pairingCodeRequested = true; // once
-        try {
-          const pairingCode = await sock.requestPairingCode(pairingNumber); // 8-character code
-          log.info(`PAIRING CODE: ${pairingCode}  ->  on the bot phone: WhatsApp Business > Linked devices > Link with phone number`); // shown once in the logs
-        } catch (err) {
-          log.error({ err: redact(err.message) }, 'pairing code request failed'); // the socket closed meanwhile: the next connection asks again
-        }
+        pairingCodeRequested = true; // set before waiting: QR events keep arriving meanwhile
+        pairingCodeRequested = await requestAndLogPairingCode(sock, pairingNumber, log); // false on failure: try again at the next QR
       }
       if (connection === 'open') {
         liveSocket = sock;
@@ -98,7 +109,10 @@ export function startWhatsApp({ authDir, pairingNumber, log, onMessage, onOpen }
         }
         if (delayMs === null) {
           status = 'logged_out';
-          return log.error('whatsapp logged out: delete the wa-auth folder and link again'); // never auto-relink
+          return log.error(
+            { code: statusCode },
+            'whatsapp logged out or restricted: check the phone, then restart the bot, or delete the wa-auth folder and link again',
+          ); // never auto-relink
         }
         if (statusCode === DisconnectReason.connectionReplaced) {
           status = 'replaced'; // two instances share one session (e.g. a copy of data/ started elsewhere): stop the fight

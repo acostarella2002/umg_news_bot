@@ -214,19 +214,19 @@
       "id": "ateneo",
       "name": "Ateneo UMG - Bacheca Studenti",
       "group": "Ateneo UMG - Avvisi Generali",
-      "url": "https://web.unicz.it/it/category/bacheca-studenti/10/rss"
+      "url": "https://web.unicz.it/it/category/bacheca-studenti/50/rss"
     },
     {
       "id": "ateneo",
       "name": "Ateneo UMG - Segreteria Studenti",
       "group": "Ateneo UMG - Avvisi Generali",
-      "url": "https://web.unicz.it/it/category/segreteria-studenti/10/rss"
+      "url": "https://web.unicz.it/it/category/segreteria-studenti/50/rss"
     },
     {
       "id": "ateneo",
       "name": "Ateneo UMG - Avvisi Generali",
       "group": "Ateneo UMG - Avvisi Generali",
-      "url": "https://web.unicz.it/it/category/avvisi-generali/10/rss"
+      "url": "https://web.unicz.it/it/category/avvisi-generali/50/rss"
     },
     {
       "id": "ateneo",

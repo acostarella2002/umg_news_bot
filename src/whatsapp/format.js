@@ -29,7 +29,7 @@ const stripWhatsAppMarkup = (text) =>
     .trim(); // shortcut: also strips legit underscores, fine for notices
 
 // Format a Rome-local date like "08/10/2026 18:57".
-const formatRomeDate = (isoDate) =>
+export const formatRomeDate = (isoDate) =>
   isoDate
     ? new Date(isoDate).toLocaleString('it-IT', {
         timeZone: 'Europe/Rome',

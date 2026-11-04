@@ -160,7 +160,7 @@ Replies with a short reminder of every command. Use it whenever you forget a com
 
 ```
 📊 *Stato*
-Ultimo controllo: 2026-10-10T10:15:02.000Z
+Ultimo controllo: 10/10/2026, 12:15
 In coda: 0
 Inviati ultima ora: 3
 Falliti ultime 24h: 0
@@ -170,7 +170,7 @@ Invii: ▶️ attivi
 
 How to read it:
 
-- **Ultimo controllo** (last check): when the boards were last read, in UTC time (Italian time minus 1 or 2 hours). It should never be older than about 5 minutes.
+- **Ultimo controllo** (last check): when the boards were last read, in Italian time. It should never be older than about 5 minutes.
 - **In coda** (queued): messages waiting to be sent. A few dozen right after many notices is normal: the bot sends them slowly on purpose.
 - **Inviati ultima ora** (sent in the last hour): never above 40.
 - **Falliti ultime 24h** (failed in the last 24 hours): should be `0`. If not, a group is not receiving: usually the bot is not an admin of a group where only admins can write, or it was removed from a group. Check with `!mappa`.
@@ -335,7 +335,7 @@ Every 6 days (`KEEPALIVE_DAYS`) the bot writes a reminder with a short status in
 | Command                 | Description                                                             |
 | ----------------------- | ----------------------------------------------------------------------- |
 | `npm ci`                | Installs the dependencies exactly at the locked versions.               |
-| `npm test`              | Runs the 66 automated tests (modules, security, end-to-end flow).       |
+| `npm test`              | Runs the 72 automated tests (modules, security, end-to-end flow).       |
 | `npm run lint`          | Checks the code with ESLint.                                            |
 | `npm run format:check`  | Checks formatting with Prettier (`npm run format` fixes it).            |
 | `npm run check:sources` | Checks every board live and reports the empty or unreachable ones.      |
@@ -357,7 +357,7 @@ The `brain/` folder is an [Obsidian](https://obsidian.md) vault (in Italian) des
 
 ## Operating the server
 
-The bot runs on an Oracle Cloud **Always Free** virtual machine (`VM.Standard.E2.1.Micro`, Ubuntu 24.04) at **`<server-IP>`**, user `ubuntu`. All the commands below are run in **PowerShell on your PC**; they reach the server over SSH. How the server was built is recorded in [Server setup history](#server-setup-history).
+The bot runs on an Oracle Cloud **Always Free** virtual machine (`VM.Standard.E2.1.Micro`, Ubuntu 24.04), user `ubuntu`. Its IP address is not in this repository: it is kept on your PC, in the `UMG_SERVER_IP` variable. All the commands below are run in **PowerShell on your PC**; they reach the server over SSH. How the server was built is recorded in [Server setup history](#server-setup-history).
 
 > [!IMPORTANT]
 > WhatsApp must be active in **one place only**: the server. On the PC always run with `WA_ENABLED=false`, otherwise the groups receive duplicate messages.
@@ -374,10 +374,16 @@ The bot runs on an Oracle Cloud **Always Free** virtual machine (`VM.Standard.E2
    ```
 
 2. **SSH key.** The private key `oracle_umg` must be in `$HOME\.ssh\`. On another PC, copy it there from a safe place; never share it.
-3. **Session variables.** At the start of every PowerShell session, set:
+3. **Server IP.** Run once with the real address, then restart the terminal. `deploy.ps1` reads it from here:
 
    ```powershell
-   $IP = '<server-IP>'
+   [Environment]::SetEnvironmentVariable('UMG_SERVER_IP', '<server-IP>', 'User')
+   ```
+
+4. **Session variables.** At the start of every PowerShell session, set:
+
+   ```powershell
+   $IP = $env:UMG_SERVER_IP
    $KEY = "$HOME\.ssh\oracle_umg"
    cd $HOME\Desktop\umg-news-bot
    ```
@@ -543,7 +549,7 @@ How the production server was created in October 2026. Kept as a record and as t
    ```
 
 3. **Network**: VCN `umg_news_vcn` with the public subnet `umg_news_bot_subnet` (`10.0.0.0/24`), the Internet Gateway `umg-news-igw`, the route rule `0.0.0.0/0 → umg-news-igw` in the default route table, and two ingress rules in the subnet's security list: TCP `22` (SSH) and TCP `8080` (feeds), both from `0.0.0.0/0`. On a new setup, _Networking → Virtual cloud networks → Start VCN Wizard → Create VCN with Internet Connectivity_ creates gateway and route automatically; only the `8080` rule must be added.
-4. **Virtual machine** `umg-news-bot`: image _Canonical Ubuntu 24.04_ (x86_64), shape `VM.Standard.E2.1.Micro` (1/8 OCPU, 1 GB memory), in `umg_news_bot_subnet` with an automatically assigned public IPv4 address (`<server-IP>`) and the public key `oracle_umg.pub`.
+4. **Virtual machine** `umg-news-bot`: image _Canonical Ubuntu 24.04_ (x86_64), shape `VM.Standard.E2.1.Micro` (1/8 OCPU, 1 GB memory), in `umg_news_bot_subnet` with an automatically assigned public IPv4 address and the public key `oracle_umg.pub`.
 5. **Server preparation** (on the server, via `ssh -i $HOME\.ssh\oracle_umg ubuntu@<server-IP>`): 2 GB of swap, Docker, and port 8080 in the local firewall.
 
    ```bash
@@ -568,3 +574,9 @@ How the production server was created in October 2026. Kept as a record and as t
 7. **WhatsApp**: community and groups prepared, bot linked by QR (the pairing code was refused by the phone with "couldn't link device"), links completed as in [WhatsApp setup](#whatsapp-setup-once).
 
 To serve the feeds over HTTPS with a free domain, see [DEPLOY.md](DEPLOY.md) (in Italian).
+
+---
+
+## License
+
+This is a custom license, see [LICENSE](LICENSE). Anyone may use, run, copy and share the bot for free, on condition that the code stays exactly as it is (settings in `.env` and `config/` may change), the tag `primaverastudentesca` is shown where the code is reused, and the license text is kept. Sharing a modified version needs written permission. It is not an open-source license in the usual sense, because it does not allow sharing changes.

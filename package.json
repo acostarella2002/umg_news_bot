@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "RSS feeds and WhatsApp community notifications for UMG Catanzaro degree course notice boards",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "engines": {
     "node": ">=22.13"
@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/index.js",
     "poll:once": "node --disable-warning=ExperimentalWarning scripts/poll-once.js",
-    "check:sources": "node scripts/check-sources.js",
+    "check:sources": "node --disable-warning=ExperimentalWarning scripts/check-sources.js",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\"",
     "lint": "eslint .",
     "format": "prettier --write .",
