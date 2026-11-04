@@ -1,7 +1,7 @@
 // Unit tests for src/whatsapp/sender.js with a fake WhatsApp socket.
 import { test } from 'node:test'; // built-in test runner
 import assert from 'node:assert/strict'; // strict assertions
-import { openDb, upsertNotices, linkGroup, setStateValue, pendingDeliveries, countSentLastHour, recordDelivery } from '../src/db.js'; // storage
+import { openDb, upsertNotices, linkGroup, setStateValue, pendingDeliveries, countSentLastHour, recordDelivery, recordNoticeUpdate } from '../src/db.js'; // storage
 import { createSender } from '../src/whatsapp/sender.js'; // module under test
 import { formatNotice } from '../src/whatsapp/format.js'; // the message as it is normally built
 
@@ -250,6 +250,75 @@ test('an update counts for the hourly cap', async () => {
   assert.equal(await sender.sendNextMessage(), 'sent'); // an update
   assert.equal(countSentLastHour(db), 2); // both counted
   assert.equal(await sender.sendNextMessage(), 'rate'); // cap reached
+});
+
+// DB with one page already sent to the group long ago, then changed by the site under the same URL.
+const setupPageUpdate = (senderOptions = {}) => {
+  const { db, sock, sender } = setupTwins([twinNotice(1)], ['g@g.us'], senderOptions); // one page
+  recordDelivery(db, twinNotice(1).url, 'g@g.us', 'sent'); // first message
+  db.prepare("UPDATE deliveries SET at = '2026-01-01T00:00:00.000Z'").run(); // long ago: out of the hourly cap
+  db.prepare("UPDATE notices SET first_seen = '2026-01-01T00:00:00.000Z'").run(); // published long ago
+  assert.equal(recordNoticeUpdate(db, twinNotice(1).url, ['giuri']), true); // the site changes the page
+  return { db, sock, sender };
+};
+
+// Same code: the label, then the message as it is normally built, once, and the queue is clean.
+test('a changed page is sent as an update, once', async () => {
+  const { sock, sender } = setupPageUpdate(); // page changed
+  assert.equal(await sender.sendNextMessage(), 'sent'); // the update
+  assert.equal(await sender.sendNextMessage(), 'idle'); // not again
+  assert.deepEqual(sentTexts(sock), [`Aggiornamento in:\n\n${formatNotice(twinNotice(1), 'giuri')}`]); // one label, with the same link
+});
+
+// A later update of the same page is a new message; the earlier record does not swallow it.
+test('a second change of the page is a second message', async () => {
+  const { db, sock, sender } = setupPageUpdate(); // first change
+  db.prepare("UPDATE group_map SET created_at = '2026-01-01T00:00:00.000Z'").run(); // the group was linked long ago
+  db.prepare('INSERT INTO notice_updates (url, target, at) VALUES (?, ?, ?)').run(twinNotice(1).url, 'giuri', new Date(Date.now() - 2 * 36e5).toISOString()); // another one, two hours earlier
+  assert.equal(await sender.sendNextMessage(), 'sent'); // one
+  assert.equal(await sender.sendNextMessage(), 'sent'); // the other
+  assert.equal(await sender.sendNextMessage(), 'idle'); // done
+  assert.equal(sentTexts(sock).length, 2); // two in all
+});
+
+// A republication under another code with the same files stays a duplicate, but the update of a page is never mistaken for one.
+test('a page update is not dropped by the duplicate check', async () => {
+  const { db, sock, sender } = setupPageUpdate(); // page changed
+  upsertNotices(db, 'giuri', [twinNotice(2, 1)], false); // a twin with the same files, never sent to this group
+  recordDelivery(db, twinNotice(2).url, 'g@g.us', 'sent'); // sent now: the 3-day duplicate check would match
+  assert.equal(await sender.sendNextMessage(), 'sent'); // still goes
+  assert.equal(sentTexts(sock).length, 1); // one message
+});
+
+// The update of a page fails like any message: retry later, keep the label, then give up after three tries without losing the first send.
+test('a page update retries and gives up on its own', async () => {
+  let now = 0; // fake clock
+  const { db, sock, sender } = setupPageUpdate({ clock: () => now }); // page changed
+  const realSend = sock.sendMessage; // working send
+  sock.sendMessage = async () => {
+    throw new Error('boom');
+  }; // WhatsApp fails
+  assert.equal(await sender.sendNextMessage(), 'error'); // 1st try
+  assert.equal(await sender.sendNextMessage(), 'waiting'); // cooling down
+  now += 5 * 60_000; // retry time
+  sock.sendMessage = realSend; // WhatsApp is back
+  assert.equal(await sender.sendNextMessage(), 'sent'); // 2nd try
+  assert.ok(sentTexts(sock)[0].startsWith('Aggiornamento in:\n\n')); // labelled
+  assert.equal(pendingDeliveries(db).length, 0); // done
+  assert.equal(db.prepare('SELECT status FROM deliveries WHERE url = ?').get(twinNotice(1).url).status, 'sent'); // the first send is untouched
+});
+
+// Updates count for the hourly cap, in the DB and while the disk is full, and are not repeated.
+test('a page update respects the hourly cap and a full disk', async () => {
+  const { db, sock, sender } = setupPageUpdate({ config: { ...senderConfig, maxSendsPerHour: 1 } }); // cap of 1
+  fillDisk(db); // nothing can be written
+  assert.equal(await sender.sendNextMessage(), 'sent'); // delivered
+  assert.equal(await sender.sendNextMessage(), 'rate'); // the unsaved one counts
+  freeDisk(db); // space is back
+  assert.equal(await sender.sendNextMessage(), 'rate'); // saved, and still counted
+  assert.equal(countSentLastHour(db), 1); // written under its own key
+  assert.equal(sentTexts(sock).length, 1); // no repeat
+  assert.equal(pendingDeliveries(db).length, 0); // queue clean
 });
 
 // Real failure instead of a mock: every write to the deliveries table fails, as on a full disk.

@@ -29,7 +29,7 @@ export function openDb(filePath) {
       PRIMARY KEY (target, jid)
     );
     CREATE TABLE IF NOT EXISTS deliveries (
-      url TEXT NOT NULL,                      -- notice URL
+      url TEXT NOT NULL,                      -- notice URL, or "<URL>#aggiornamento-<time>" for the update of a page
       jid TEXT NOT NULL,                      -- group it was sent to
       status TEXT NOT NULL,                   -- 'sent', 'failed', 'skipped' (!svuota) or 'duplicate' (same notice already sent)
       at TEXT NOT NULL,                       -- timestamp
@@ -41,7 +41,13 @@ export function openDb(filePath) {
       at TEXT NOT NULL,                       -- request time (same 3-day limit as normal notices)
       PRIMARY KEY (url, jid)
     );
-    CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT); -- small state: seeded sources, last poll, pause flag
+    CREATE TABLE IF NOT EXISTS notice_updates (
+      url TEXT NOT NULL,                      -- page the site changed, under the same URL
+      target TEXT NOT NULL,                   -- board listing the page today (not notice_targets: it keeps the courses of the old school fan-out)
+      at TEXT NOT NULL,                       -- when the bot noticed, the same for all the targets of one update
+      PRIMARY KEY (url, target, at)
+    );
+    CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT); -- small state: seeded sources, feed order, last poll, pause flag
   `);
   return db; // ready to use
 }
@@ -62,7 +68,7 @@ export function upsertNotices(db, targetIds, notices, shouldNotify) {
   const insertNotice = db.prepare(
     `INSERT INTO notices (url, title, published, updated, body, attachments, notify, first_seen)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(url) DO UPDATE SET title = excluded.title, updated = excluded.updated`, // keep body/notify, refresh title+date
+     ON CONFLICT(url) DO UPDATE SET title = excluded.title, updated = COALESCE(MAX(excluded.updated, notices.updated), excluded.updated, notices.updated)`, // keep body/notify, refresh title, the date only moves forward (two boards may disagree)
   );
   const linkTarget = db.prepare('INSERT OR IGNORE INTO notice_targets (url, target) VALUES (?, ?)'); // many-to-many link
   const noticeExists = db.prepare('SELECT 1 FROM notices WHERE url = ?'); // novelty check
@@ -105,9 +111,9 @@ export const saveDetail = (db, url, { body, attachments }) =>
 // includeWaitingForBody = true also lists the ones still waiting for their body (used by !svuota).
 export function pendingDeliveries(db, maxAgeDays = 3, includeWaitingForBody = false) {
   const freshnessCutoff = isoAgo(maxAgeDays * 864e5); // older notices are never sent
-  return db
+  const newNotices = db
     .prepare(
-      `SELECT notice.url, group_link.jid, MIN(group_link.target) AS target
+      `SELECT notice.url, group_link.jid, MIN(group_link.target) AS target, notice.url AS deliveryKey, 0 AS isUpdate, notice.first_seen AS queuedAt
        FROM notices notice
        JOIN notice_targets notice_target ON notice_target.url = notice.url
        JOIN group_map group_link ON group_link.target = notice_target.target
@@ -116,10 +122,37 @@ export function pendingDeliveries(db, maxAgeDays = 3, includeWaitingForBody = fa
        WHERE delivery.url IS NULL
          AND ((notice.notify = 1 AND notice.first_seen >= group_link.created_at AND notice.first_seen >= ?) OR manual.at >= ?)
          AND (? OR notice.body IS NOT NULL OR COALESCE(manual.at, notice.first_seen) < ?)
-       GROUP BY notice.url, group_link.jid
-       ORDER BY notice.first_seen, notice.url`, // oldest first, one row per (notice, group)
+       GROUP BY notice.url, group_link.jid`, // one row per (notice, group)
     )
     .all(freshnessCutoff, freshnessCutoff, includeWaitingForBody ? 1 : 0, isoAgo(36e5)); // wait for the body, but at most 1 hour
+  const pageUpdates = db
+    .prepare(
+      `SELECT page_update.url, group_link.jid, MIN(group_link.target) AS target, page_update.deliveryKey, 1 AS isUpdate, page_update.at AS queuedAt
+       FROM (SELECT *, url || '#aggiornamento-' || at AS deliveryKey FROM notice_updates) page_update
+       JOIN group_map group_link ON group_link.target = page_update.target
+       LEFT JOIN deliveries delivery ON delivery.url = page_update.deliveryKey AND delivery.jid = group_link.jid
+       WHERE delivery.url IS NULL AND page_update.at >= ? AND page_update.at >= group_link.created_at
+       GROUP BY page_update.deliveryKey, group_link.jid`, // one row per (update, group); the body was refreshed before the update was recorded
+    )
+    .all(freshnessCutoff); // same limit as new notices: no floods after downtime
+  return [...newNotices, ...pageUpdates].sort(
+    (left, right) => left.queuedAt.localeCompare(right.queuedAt) || left.deliveryKey.localeCompare(right.deliveryKey),
+  ); // oldest first
+}
+
+// Updates announced per page in any 24 hours (decided by the owner on 2026-11-04).
+const MAX_UPDATES_PER_DAY = 2;
+// Quiet time after an update and after the first sighting: authors save several times, and one edit can show in two feeds or two boards.
+const UPDATE_QUIET_MS = 36e5;
+
+// Record that a page changed under the same URL, for the boards listing it; returns false when it must stay silent (just published, just announced, or daily cap reached).
+export function recordNoticeUpdate(db, url, targetIds) {
+  if (db.prepare('SELECT 1 FROM notices WHERE url = ? AND first_seen > ?').get(url, isoAgo(UPDATE_QUIET_MS))) return false; // a fix right after publishing: the first message is enough
+  const lastDay = db.prepare('SELECT DISTINCT at FROM notice_updates WHERE url = ? AND at >= ?').all(url, isoAgo(864e5)); // recent updates of this page
+  if (lastDay.length >= MAX_UPDATES_PER_DAY || lastDay.some(({ at }) => at > isoAgo(UPDATE_QUIET_MS))) return false; // daily cap or quiet time
+  const noticedAt = nowIso(); // one time: one message per group, even with two of its targets
+  for (const targetId of targetIds) db.prepare('INSERT INTO notice_updates (url, target, at) VALUES (?, ?, ?)').run(url, targetId, noticedAt); // queued for the groups of these boards
+  return true; // announced
 }
 
 // Mark a notice as sent (or failed, skipped, duplicate) for one group.
@@ -129,7 +162,7 @@ export const recordDelivery = (db, url, jid, status) =>
 // Drop every queued message (also the ones waiting for their body); returns how many were dropped.
 export function cancelPendingDeliveries(db) {
   const queued = pendingDeliveries(db, 3, true); // whole queue
-  for (const delivery of queued) recordDelivery(db, delivery.url, delivery.jid, 'skipped'); // out of the queue for good
+  for (const delivery of queued) recordDelivery(db, delivery.deliveryKey, delivery.jid, 'skipped'); // out of the queue for good
   return queued.length;
 }
 
@@ -140,15 +173,21 @@ const noticeIdentity = (notice) =>
     .sort()
     .join(' ')}`;
 
+// A notice as stored (attachments still JSON).
+const storedNotice = (db, url) => db.prepare('SELECT * FROM notices WHERE url = ?').get(url);
+// Notices really sent to a group under another URL, with the time of the send.
+const noticesSentElsewhere = (db, url, jid) =>
+  db
+    .prepare(
+      "SELECT notice.*, delivery.at AS sent_at FROM deliveries delivery JOIN notices notice ON notice.url = delivery.url WHERE delivery.jid = ? AND delivery.status = 'sent' AND delivery.url != ?",
+    )
+    .all(jid, url);
+
 // True when the group already received, in the last 3 days, a notice identical to this one under another URL.
 export function wasIdenticalNoticeSent(db, url, jid) {
-  const candidate = db.prepare('SELECT title, attachments FROM notices WHERE url = ?').get(url); // notice about to be sent
-  return db
-    .prepare(
-      "SELECT notice.title, notice.attachments FROM deliveries delivery JOIN notices notice ON notice.url = delivery.url WHERE delivery.jid = ? AND delivery.status = 'sent' AND delivery.at >= ? AND delivery.url != ?",
-    )
-    .all(jid, isoAgo(3 * 864e5), url) // same window as the queue
-    .some((sentNotice) => noticeIdentity(sentNotice) === noticeIdentity(candidate)); // different attachment numbers = different notices
+  const candidateIdentity = noticeIdentity(storedNotice(db, url)); // notice about to be sent
+  const windowStart = isoAgo(3 * 864e5); // same window as the queue
+  return noticesSentElsewhere(db, url, jid).some((sentNotice) => sentNotice.sent_at >= windowStart && noticeIdentity(sentNotice) === candidateIdentity); // different attachment numbers = different notices
 }
 
 // The words of a text: links and spaces are ignored, because the sites paste the new attachment's link inside the text and sometimes lose a space after it.
@@ -159,13 +198,13 @@ const wordsOf = (text) =>
 
 // True when the group already received an earlier notice with the same words under another URL: this one is its update (e.g. new files). No time limit.
 export function wasSameTextSent(db, url, jid) {
-  const candidate = db.prepare('SELECT title, body, first_seen FROM notices WHERE url = ?').get(url); // notice about to be sent
-  return db
-    .prepare(
-      "SELECT notice.title, notice.body FROM deliveries delivery JOIN notices notice ON notice.url = delivery.url WHERE delivery.jid = ? AND delivery.status = 'sent' AND delivery.url != ? AND notice.first_seen <= ?",
-    )
-    .all(jid, url, candidate.first_seen) // an older notice sent late (retry, !prova) is not the update of a newer one
-    .some((sentNotice) => wordsOf(sentNotice.title) === wordsOf(candidate.title) && wordsOf(sentNotice.body) === wordsOf(candidate.body)); // title and body compared separately
+  const candidate = storedNotice(db, url); // notice about to be sent
+  return noticesSentElsewhere(db, url, jid).some(
+    (sentNotice) =>
+      sentNotice.first_seen <= candidate.first_seen && // an older notice sent late (retry, !prova) is not the update of a newer one
+      wordsOf(sentNotice.title) === wordsOf(candidate.title) && // title and body compared separately
+      wordsOf(sentNotice.body) === wordsOf(candidate.body),
+  );
 }
 
 // Number of messages sent in the last hour (rate limiting).
@@ -179,7 +218,7 @@ export const isNoticeKnown = (db, url) => Boolean(db.prepare('SELECT 1 FROM noti
 
 // Read one notice with its attachments parsed.
 export function getNotice(db, url) {
-  const row = db.prepare('SELECT * FROM notices WHERE url = ?').get(url); // single row
+  const row = storedNotice(db, url); // single row
   return row && { ...row, attachments: JSON.parse(row.attachments) }; // decode JSON column
 }
 

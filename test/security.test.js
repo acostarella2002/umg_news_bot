@@ -71,7 +71,7 @@ test('no personal data is persisted or logged', async () => {
     assert.ok(!lines.join('').includes(secret), `logs contain ${secret}`); // not logged
   }
   assert.ok(!lines.join('').includes('111-1@g.us'), 'logs contain a group JID'); // even group ids stay out of logs
-  assert.deepEqual(tables.sort(), ['deliveries', 'group_map', 'kv', 'manual_sends', 'notice_targets', 'notices']); // no table for people exists
+  assert.deepEqual(tables.sort(), ['deliveries', 'group_map', 'kv', 'manual_sends', 'notice_targets', 'notice_updates', 'notices']); // no table for people exists
 });
 
 // Static guarantees on the WhatsApp client configuration.

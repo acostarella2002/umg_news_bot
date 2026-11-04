@@ -180,6 +180,116 @@ test('wasSameTextSent: time', () => {
   assert.equal(db.wasSameTextSent(d, n(1).url, 'late@g.us'), false); // the older one is not its update
 });
 
+// DB with one old notice linked to g@g.us, ready for page updates.
+const updateSetup = () => {
+  const d = db.openDb(':memory:'); // fresh DB
+  db.linkGroup(d, 'infermieristica', 'g@g.us'); // group first
+  db.upsertNotices(d, 'infermieristica', [n(1, { body: 'Testo' })], false); // an old seeded page
+  d.prepare("UPDATE notices SET first_seen = '2026-01-01T00:00:00.000Z'").run(); // long before today
+  return d; // ready
+};
+const hoursAgo = (hours) => new Date(Date.now() - hours * 36e5).toISOString(); // past timestamp
+const pastUpdate = (d, hours) => d.prepare('INSERT INTO notice_updates (url, target, at) VALUES (?, ?, ?)').run(n(1).url, 'infermieristica', hoursAgo(hours)); // an earlier update
+
+// At most two updates per page in any 24 hours, and never two within an hour.
+test('recordNoticeUpdate: daily cap and quiet time', () => {
+  const first = updateSetup(); // no update yet
+  assert.equal(db.recordNoticeUpdate(first, n(1).url, ['infermieristica']), true); // the first goes
+  assert.equal(db.recordNoticeUpdate(first, n(1).url, ['infermieristica']), false); // a second save right after does not
+  const afterOne = updateSetup(); // one update 2 hours ago
+  pastUpdate(afterOne, 2);
+  assert.equal(db.recordNoticeUpdate(afterOne, n(1).url, ['infermieristica']), true); // the second of the day goes
+  const afterTwo = updateSetup(); // two updates today
+  pastUpdate(afterTwo, 10);
+  pastUpdate(afterTwo, 2);
+  assert.equal(db.recordNoticeUpdate(afterTwo, n(1).url, ['infermieristica']), false); // the third does not
+  const nextDay = updateSetup(); // two updates, one out of the window
+  pastUpdate(nextDay, 25);
+  pastUpdate(nextDay, 2);
+  assert.equal(db.recordNoticeUpdate(nextDay, n(1).url, ['infermieristica']), true); // the window is rolling
+});
+
+// One update for two boards is one update: it must not eat the daily cap.
+test('recordNoticeUpdate: an update on two boards counts once', () => {
+  const d = updateSetup(); // one old page
+  const twoHoursAgo = hoursAgo(2); // same time for both rows
+  for (const target of ['infermieristica', 'medicina'])
+    d.prepare('INSERT INTO notice_updates (url, target, at) VALUES (?, ?, ?)').run(n(1).url, target, twoHoursAgo); // one update
+  assert.equal(db.recordNoticeUpdate(d, n(1).url, ['infermieristica']), true); // the second of the day still goes
+});
+
+// A twin sent more than 3 days ago is not a duplicate any more: the same notice may be published again.
+test('wasIdenticalNoticeSent: only the last 3 days count', () => {
+  const d = db.openDb(':memory:'); // fresh DB
+  db.upsertNotices(d, 'infermieristica', [n(1, { title: 'Lezione spostata' }), n(2, { title: 'Lezione spostata' })], true); // twins
+  db.recordDelivery(d, n(1).url, 'g@g.us', 'sent'); // sent
+  assert.equal(db.wasIdenticalNoticeSent(d, n(2).url, 'g@g.us'), true); // just now: duplicate
+  d.prepare('UPDATE deliveries SET at = ?').run(hoursAgo(4 * 24)); // 4 days ago
+  assert.equal(db.wasIdenticalNoticeSent(d, n(2).url, 'g@g.us'), false); // out of the window
+});
+
+// The cap counts per page: a busy page does not silence the others.
+test('recordNoticeUpdate: the cap is per page, and a just published page is silent', () => {
+  const d = updateSetup(); // one old page
+  db.upsertNotices(d, 'infermieristica', [n(2, { body: 'Altro' })], false); // another page, just seen
+  assert.equal(db.recordNoticeUpdate(d, n(2).url, ['infermieristica']), false); // a fix right after publishing
+  d.prepare("UPDATE notices SET first_seen = '2026-01-01T00:00:00.000Z'").run(); // both old now
+  assert.equal(db.recordNoticeUpdate(d, n(1).url, ['infermieristica']), true); // page 1
+  assert.equal(db.recordNoticeUpdate(d, n(2).url, ['infermieristica']), true); // page 2 is not affected
+});
+
+// An update reaches every group of the page once, without touching the record of the first send.
+test('pendingDeliveries lists page updates', () => {
+  const d = updateSetup(); // old page, one group
+  db.linkGroup(d, 'infermieristica', 'b@g.us'); // a second group
+  db.recordDelivery(d, n(1).url, 'g@g.us', 'sent'); // the first message went long ago
+  assert.equal(db.pendingDeliveries(d).length, 0); // nothing to do
+  db.recordNoticeUpdate(d, n(1).url, ['infermieristica']); // the page changes
+  const queued = db.pendingDeliveries(d); // one row per group
+  assert.equal(queued.length, 2); // both groups
+  assert.ok(queued.every((row) => row.isUpdate === 1 && row.url === n(1).url && row.deliveryKey.startsWith(`${n(1).url}#aggiornamento-`))); // their own key
+  db.recordDelivery(d, queued[0].deliveryKey, queued[0].jid, 'sent'); // one group served
+  assert.equal(db.pendingDeliveries(d).length, 1); // the other is left
+  assert.equal(db.countSentLastHour(d), 2); // the update counts for the hourly cap
+  assert.equal(d.prepare('SELECT COUNT(*) AS total FROM deliveries WHERE url = ?').get(n(1).url).total, 1); // the first send is untouched
+  assert.equal(db.cancelPendingDeliveries(d), 1); // !svuota removes it
+  assert.equal(db.pendingDeliveries(d).length, 0); // gone for good
+});
+
+// The update goes to the boards named, not to every target the page ever had; a group with two of them gets one message.
+test('pendingDeliveries: page updates reach only the boards named', () => {
+  const d = updateSetup(); // old page of infermieristica
+  db.upsertNotices(d, ['medicina', 'fisioterapia'], [n(1)], false); // the old school fan-out left more targets
+  for (const target of ['medicina', 'fisioterapia']) db.linkGroup(d, target, `${target}@g.us`); // their groups
+  db.linkGroup(d, 'medicina', 'g@g.us'); // this group has two of the boards named
+  db.recordNoticeUpdate(d, n(1).url, ['medicina', 'infermieristica']); // listed there today
+  assert.deepEqual(
+    db
+      .pendingDeliveries(d)
+      .map((row) => row.jid)
+      .sort(),
+    ['g@g.us', 'medicina@g.us'],
+  ); // no fisioterapia, and g@g.us once
+});
+
+// No floods after downtime, nothing for a group linked after the update.
+test('pendingDeliveries: limits of page updates', () => {
+  const old = updateSetup(); // old page
+  old.prepare("UPDATE group_map SET created_at = '2026-01-01T00:00:00.000Z'").run(); // linked long ago: only the age can stop it
+  pastUpdate(old, 4 * 24); // 4 days ago
+  assert.equal(db.pendingDeliveries(old).length, 0); // too old
+  pastUpdate(old, 2 * 24); // 2 days ago
+  assert.equal(db.pendingDeliveries(old).length, 1); // still fresh
+  const relinked = updateSetup(); // old page
+  pastUpdate(relinked, 1); // one hour ago
+  relinked.prepare("UPDATE group_map SET created_at = '2099-01-01T00:00:00.000Z'").run(); // linked after that
+  assert.equal(db.pendingDeliveries(relinked).length, 0); // not retroactive
+  const unlinked = updateSetup(); // old page
+  db.unlinkGroup(unlinked, 'infermieristica', 'g@g.us'); // no group
+  db.recordNoticeUpdate(unlinked, n(1).url, ['infermieristica']); // the page changes
+  assert.equal(db.pendingDeliveries(unlinked).length, 0); // nobody to tell
+});
+
 test('kv round trip', () => {
   const d = db.openDb(':memory:'); // fresh DB
   assert.equal(db.getStateValue(d, 'x'), null); // missing key
