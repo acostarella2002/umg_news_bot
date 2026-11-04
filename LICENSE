@@ -20,8 +20,6 @@ Any right not granted here is reserved. In particular, sharing a modified versio
 of the code requires written permission from the copyright holders.
 
 Parts not covered by this license:
-- the files in .claude/skills/, which keep their own license
-  (see .claude/skills/ponytail/LICENSE);
 - the pages saved in test/fixtures/, which belong to their publishers and are kept
   only to test the parsers;
 - the dependencies installed by npm, which keep their own licenses.

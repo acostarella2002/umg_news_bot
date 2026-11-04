@@ -349,11 +349,8 @@ src/            application code (poller, parsers, database, server, WhatsApp)
 config/         sources.json (notice boards) and message.json (WhatsApp message format)
 scripts/        check tools (check-sources, poll-once) and deploy.ps1
 test/           automated tests and real pages saved as fixtures
-brain/          full technical documentation (Obsidian vault, in Italian)
 data/           database and WhatsApp session, created at startup (not versioned)
 ```
-
-The `brain/` folder is an [Obsidian](https://obsidian.md) vault (in Italian) describing architecture, notice flow, database, privacy and anti-ban rules, coding conventions and how to change the code. Start from `brain/00 - Indice.md`.
 
 ---
 
@@ -574,8 +571,6 @@ How the production server was created in October 2026. Kept as a record and as t
    ```
 
 7. **WhatsApp**: community and groups prepared, bot linked by QR (the pairing code was refused by the phone with "couldn't link device"), links completed as in [WhatsApp setup](#whatsapp-setup-once).
-
-To serve the feeds over HTTPS with a free domain, see [DEPLOY.md](DEPLOY.md) (in Italian).
 
 ---
 

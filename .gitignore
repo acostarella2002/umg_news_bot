@@ -3,3 +3,7 @@ data/
 .env
 brain/.obsidian/workspace*.json
 ssh_umg_bot.txt
+.claude/
+brain/
+CLAUDE.md
+DEPLOY.md
