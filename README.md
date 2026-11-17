@@ -300,12 +300,12 @@ Shows each target with the name of its group. `⚠️ bot non più nel gruppo` m
 The text of every message comes from `config/message.json`, the same for all groups:
 
 ```json
-"lines": ["*📢{titolo}*", "", "{testo}", "", "{link}", "", "*#PrimaveraStudentescaUMG*🌸"],
+"lines": ["*‼️{TITOLO} ‼️*", "", "{testo}", "", "{link}", "", "*#PrimaveraStudentescaUMG*🌸"],
 "attachment": "• {nome}: {url}",
 "maxBody": 700
 ```
 
-- Placeholders: `{bacheca}` course/school name, `{titolo}`, `{data}` (Rome time), `{testo}` body excerpt (at most `maxBody` characters), `{allegati}` attachment list (each one built with `attachment`), `{link}` the notice page.
+- Placeholders: `{bacheca}` course/school name, `{titolo}` and `{TITOLO}` (the title as written, and in capitals), `{data}` (Rome time), `{testo}` body excerpt (at most `maxBody` characters), `{allegati}` attachment list (each one built with `attachment`), `{link}` the notice page.
 - A line whose placeholder is empty (no date, no attachments…) is dropped; `""` is a blank line.
 - WhatsApp markup works: `*bold*`, `_italic_`, `~strikethrough~`.
 - An unknown placeholder (a typo such as `{titlo}`) stops the bot at startup with a clear error in the logs.

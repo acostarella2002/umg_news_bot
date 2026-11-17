@@ -42,12 +42,20 @@ test('formatNotice with the shipped template', () => {
   const n = { url: 'https://www.medicina.unicz.it/avviso_didattica/10208', title: 'Tirocinio *II* ANNO', body: 'Si riporta in allegato…', attachments: [] }; // sample
   assert.equal(
     formatNotice(n, 'Infermieristica'),
-    '*📢Tirocinio II ANNO*\n\nSi riporta in allegato…\n\nhttps://www.medicina.unicz.it/avviso_didattica/10208\n\n*#PrimaveraStudentescaUMG*🌸',
+    '*‼️TIROCINIO II ANNO ‼️*\n\nSi riporta in allegato…\n\nhttps://www.medicina.unicz.it/avviso_didattica/10208\n\n*#PrimaveraStudentescaUMG*🌸',
   ); // exact text
   assert.equal(
     formatNotice({ ...n, body: '' }, 'B'),
-    '*📢Tirocinio II ANNO*\n\nhttps://www.medicina.unicz.it/avviso_didattica/10208\n\n*#PrimaveraStudentescaUMG*🌸',
+    '*‼️TIROCINIO II ANNO ‼️*\n\nhttps://www.medicina.unicz.it/avviso_didattica/10208\n\n*#PrimaveraStudentescaUMG*🌸',
   ); // no body: no double gap
+  const accented = formatNotice({ ...n, title: 'Lezione è _spostata_: già a *Città* ß', body: 'è già così' }, 'B'); // accents, markup characters and body
+  assert.ok(accented.startsWith('*‼️LEZIONE È SPOSTATA: GIÀ A CITTÀ SS ‼️*\n')); // capitals keep the accents, markup is stripped, the whole line is bold
+  assert.ok(accented.includes('\nè già così\n')); // the body is left as it is
+  assert.equal(formatNotice({ ...n, title: '' }, 'B').startsWith('‼️'), false); // no title: no empty "‼️ ‼️" line
+  assert.match(
+    formatNotice({ ...n, title: 'Titolo' }, 'B', validateTemplate({ lines: ['{titolo}|{TITOLO}'], attachment: '', maxBody: 5 })),
+    /^Titolo\|TITOLO$/,
+  ); // both placeholders exist
 });
 
 // An update is the label followed by the unchanged message.

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'; // sync read is fine: runs once at start
 import { join } from 'node:path'; // portable path joining
 
 // Placeholders a template may use; anything else is a typo and stops the bot at startup.
-const KNOWN_PLACEHOLDERS = ['bacheca', 'titolo', 'data', 'testo', 'allegati', 'link', 'nome', 'url'];
+const KNOWN_PLACEHOLDERS = ['bacheca', 'titolo', 'TITOLO', 'data', 'testo', 'allegati', 'link', 'nome', 'url'];
 // Matches one {placeholder}.
 const PLACEHOLDER_PATTERN = /\{(\w+)\}/g;
 
@@ -53,6 +53,7 @@ export function formatNotice(notice, boardName, template = messageTemplate) {
   const values = {
     bacheca: stripWhatsAppMarkup(boardName), // which board the notice comes from
     titolo: stripWhatsAppMarkup(notice.title), // notice title
+    TITOLO: stripWhatsAppMarkup(notice.title).toLocaleUpperCase('it-IT'), // the same in capitals, accents kept ("è" -> "È")
     data: formatRomeDate(notice.published), // publication date
     testo: body.length > template.maxBody ? `${body.slice(0, template.maxBody).replace(/\s+\S*$/, '')}…` : body, // excerpt cut on a word boundary
     allegati: (notice.attachments ?? [])

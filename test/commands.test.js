@@ -88,7 +88,7 @@ test('misc commands', async () => {
   await handleCommand('!riprendi', ctx); // resume
   assert.equal(getStateValue(db, 'paused'), '0'); // flag cleared
   upsertNotices(db, 'giuri', [{ url: 'https://diges.unicz.it/avviso/1', title: 'Lezione', body: 'x' }], true); // a notice
-  assert.match(await handleCommand('!test giuri', ctx), /Anteprima[\s\S]*Lezione/); // preview text
+  assert.match(await handleCommand('!test giuri', ctx), /Anteprima[\s\S]*LEZIONE/); // preview text, the title in capitals
   assert.match(await handleCommand('!test <Giuri>.', ctx), /Anteprima/); // brackets, final dot and capital letter tolerated
   assert.match(await handleCommand('!test', ctx), /Uso: !test/); // missing target
   assert.match(await handleCommand('!test\u200bgiuri', ctx), /Anteprima/); // zero-width space between command and target
