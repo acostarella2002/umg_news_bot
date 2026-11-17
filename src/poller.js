@@ -18,6 +18,8 @@ import {
 const MAX_NEW_PER_BOARD = 10;
 // In that case only notices published in the last 3 days are queued (same window as pendingDeliveries).
 const RECENT_WINDOW_MS = 3 * 864e5;
+// A new notice published longer ago than this is stored for the RSS only, never sent (an old page the site put back in a list; decided by the owner on 2026-11-17).
+const MAX_NOTICE_AGE_MS = 30 * 864e5;
 // Boards read at the same time (polite to the university servers).
 const CONCURRENT_FETCHES = 3;
 // How much of a feed is remembered to notice pages moving up; the Ateneo feeds have 50 items at most, Fondazione over 400.
@@ -109,7 +111,8 @@ export async function pollOnce({ db, sources, fetchText = defaultFetchText, log 
         for (const notice of notices) for (const target of job.targets) editedPages.get(notice.url)?.targets.add(target); // also the boards reading the page after the stored date moved
         const unseenCount = notices.filter((notice) => !isNoticeKnown(db, notice.url)).length; // URLs never seen before
         const isBurst = isSeeded && unseenCount > MAX_NEW_PER_BOARD; // many at once: tell real news from re-listed old notices by date
-        const isRecent = (notice) => !isBurst || Date.parse(notice.published) >= Date.now() - RECENT_WINDOW_MS; // no date counts as old
+        const isTooOld = (notice) => Date.parse(notice.published) < Date.now() - MAX_NOTICE_AGE_MS; // false when there is no date: better a late message than a lost one
+        const isRecent = (notice) => !isTooOld(notice) && (!isBurst || Date.parse(notice.published) >= Date.now() - RECENT_WINDOW_MS); // in a burst, no date counts as old
         const toNotify = notices.filter(isRecent); // notified (the sender slows down on a long queue)
         if (isBurst)
           log.warn?.(

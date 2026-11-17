@@ -11,9 +11,14 @@ const sources = {
   feeds: [{ id: 'fondazione', url: 'https://www.fondazioneumg.it/feed' }], // RSS
 };
 
+// Rome date "DD/MM/YYYY" of `daysAgo` days ago (tests must not depend on the calendar: new notices older than 30 days are not sent).
+const romeDay = (daysAgo = 0) =>
+  new Date(Date.now() - daysAgo * 864e5).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric' });
+const TODAY = romeDay(); // published today
+
 // Build a table row like the CMS does.
 const row = (id, title) =>
-  `<tr><td>08/10/2026 10:00:00</td><td><a href='https://diges.unicz.it/avviso_didattica/${id}'>${title}</a></td><td>08/10/2026 10:00:00</td></tr>`;
+  `<tr><td>${TODAY} 10:00:00</td><td><a href='https://diges.unicz.it/avviso_didattica/${id}'>${title}</a></td><td>${TODAY} 10:00:00</td></tr>`;
 
 // Fake fetcher serving in-memory pages; `pages` can be changed between polls.
 const fakeFetch = (pages) => async (url) => {
@@ -66,7 +71,7 @@ test('pollOnce guards against floods', async () => {
   const db = openDb(':memory:'); // fresh DB
   const warnings = []; // captured log calls
   const log = { warn: (o) => warnings.push(o) }; // logger
-  const old = (id) => row(id, `T${id}`).replaceAll('08/10/2026', '08/10/2020'); // a notice published years ago
+  const old = (id) => row(id, `T${id}`).replaceAll(TODAY, '08/10/2020'); // a notice published years ago
   const rows = (from, n) => Array.from({ length: n }, (_, i) => old(from + i)).join(''); // n old table rows
   const course = sources.courses[0].url; // the board under test
   linkGroup(db, 'giuri', 'g@g.us'); // group linked before anything is read
@@ -90,14 +95,13 @@ test('pollOnce guards against floods', async () => {
 // Many genuinely new notices at once are all queued (the sender then slows down), old re-listed ones are not.
 test('pollOnce queues a real burst of recent notices', async () => {
   const db = openDb(':memory:'); // fresh DB
-  const today = new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric' }); // "10/10/2026"
-  const recent = (id) => row(id, `R${id}`).replaceAll('08/10/2026', today); // published today
+  const recent = (id) => row(id, `R${id}`); // published today
   const course = sources.courses[0].url; // the board under test
   const pages = { [course]: `<table>${row(1, 'Vecchio')}</table>`, [sources.schools[0].url]: '<html></html>', [sources.feeds[0].url]: '<rss></rss>' }; // seed
   await pollOnce({ db, sources, fetchText: fakeFetch(pages), log: {} }); // seed
   linkGroup(db, 'giuri', 'g@g.us'); // group linked
   const burst = Array.from({ length: 15 }, (_, i) => recent(300 + i)).join(''); // 15 notices published today
-  const stale = row(400, 'Ripubblicato').replaceAll('08/10/2026', '01/01/2020'); // an old one re-listed in the same read
+  const stale = row(400, 'Ripubblicato').replaceAll(TODAY, '01/01/2020'); // an old one re-listed in the same read
   pages[course] = `<table>${burst}${stale}${row(1, 'Vecchio')}</table>`;
   await pollOnce({ db, sources, fetchText: fakeFetch(pages), log: {} }); // burst
   const urls = pendingDeliveries(db, 3).map((p) => p.url); // queued
@@ -125,7 +129,7 @@ const feedUrl = sources.feeds[0].url; // the feed under test
 const page = (id) => `https://www.fondazioneumg.it/notizia/${id}`; // a page code in a feed carrying the whole text
 // RSS document listing the given page codes, top first; `bodies` overrides the text of a page.
 const feedOf = (ids, bodies = {}) =>
-  `<rss><channel>${ids.map((id) => `<item><title>Avviso ${id}</title><link>${page(id)}</link><pubDate>Mon, 03 Aug 2026 10:00:00 GMT</pubDate><description>${bodies[id] ?? `Testo ${id}`}</description></item>`).join('')}</channel></rss>`;
+  `<rss><channel>${ids.map((id) => `<item><title>Avviso ${id}</title><link>${page(id)}</link><pubDate>${new Date().toUTCString()}</pubDate><description>${bodies[id] ?? `Testo ${id}`}</description></item>`).join('')}</channel></rss>`;
 // Make the stored pages old enough for an update: a fix right after publishing stays silent.
 const agePages = (db) => db.prepare("UPDATE notices SET first_seen = '2026-01-01T00:00:00.000Z'").run();
 // Poller on a fresh DB with the feed linked to a group.
@@ -298,7 +302,7 @@ test('the update of a page on two boards reaches both groups once', async () => 
 // The Ateneo feeds hold only a cut excerpt: the group must get the whole text, read from the page.
 const ateneoPage = (id) => `http://web.unicz.it/it/news/${id}`; // a page code in the Ateneo feeds
 const ateneoFeedOf = (ids) =>
-  `<rss><channel>${ids.map((id) => `<item><title>Avviso ${id}</title><link>${ateneoPage(id)}</link><pubDate>Mon, 03 Aug 2026 10:00:00 GMT</pubDate><description><![CDATA[Testo tagliato dal sito attr...]]></description></item>`).join('')}</channel></rss>`;
+  `<rss><channel>${ids.map((id) => `<item><title>Avviso ${id}</title><link>${ateneoPage(id)}</link><pubDate>${new Date().toUTCString()}</pubDate><description><![CDATA[Testo tagliato dal sito attr...]]></description></item>`).join('')}</channel></rss>`;
 const ateneoDetail = (text, file) =>
   `<div class="col-md-9"><div class="text-justify">${text}</div><div class="well well-sm"><h4><a href="/uploads/${file}.pdf">File</a></h4></div></div>`;
 // Poller on a fresh DB with one Ateneo feed linked to a group, already seeded.
@@ -414,4 +418,37 @@ test('an Ateneo page moving up with the same text and files is silent', async ()
   db.prepare('UPDATE kv SET v = ?').run(JSON.stringify([ateneoPage(1), ateneoPage(2)])); // back to the old order, to move it up again
   pages[ateneoPage(2)] = ateneoDetail('Avviso sugli scorrimenti', 'secondo'); // a new file
   assert.equal((await poll()).updates, 1); // announced
+});
+
+// New notices older than 30 days are stored for the RSS only; recent ones, and ones without a date, are sent.
+test('a new notice published more than 30 days ago is not sent', async () => {
+  const db = openDb(':memory:'); // fresh DB
+  linkGroup(db, 'giuri', 'g@g.us'); // group first
+  const course = sources.courses[0].url; // the board
+  const dated = (id, daysAgo) => row(id, `T${id}`).replaceAll(TODAY, romeDay(daysAgo)); // a notice published `daysAgo` days ago
+  const pages = { [course]: `<table>${row(1, 'Primo')}</table>`, [sources.schools[0].url]: '<html></html>', [feedUrl]: '<rss></rss>' }; // seed
+  await pollOnce({ db, sources, fetchText: fakeFetch(pages), log: {} }); // seed
+  pages[course] = `<table>${dated(30, 31)}${dated(31, 40)}${dated(32, 29)}${dated(33, 1)}${row(1, 'Primo')}</table>`; // four new ones of different ages
+  const summary = await pollOnce({ db, sources, fetchText: fakeFetch(pages), log: {} }); // one cycle
+  assert.equal(summary.added, 4); // all stored: the RSS shows them
+  assert.deepEqual(
+    pendingDeliveries(db)
+      .map((delivery) => delivery.url.split('/').pop())
+      .sort(),
+    ['32', '33'],
+  ); // only the ones from the last 30 days
+  assert.equal(getNotice(db, 'https://diges.unicz.it/avviso_didattica/30').notify, 0); // 31 days: no message
+  assert.equal(getNotice(db, 'https://diges.unicz.it/avviso_didattica/31').title, 'T31'); // but kept
+});
+
+// A feed item without a date cannot be judged: it is sent rather than lost.
+test('a new notice without a date is still sent', async () => {
+  const { db, pages, poll } = await feedSetup([1]); // seeded
+  pages[feedUrl] = feedOf([1]).replace('</channel>', `<item><title>Senza data</title><link>${page(7)}</link><description>Testo</description></item></channel>`); // an item with no pubDate
+  await poll(); // one cycle
+  assert.equal(getNotice(db, page(7)).published, null); // really no date
+  assert.deepEqual(
+    pendingDeliveries(db).map((delivery) => delivery.url),
+    [page(7)],
+  ); // sent
 });

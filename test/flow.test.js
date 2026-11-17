@@ -23,7 +23,8 @@ const names = new Map(
 ); // same as index.js
 
 // CMS table row, RSS item and diges detail page builders.
-const row = (path, title) => `<tr><td>08/10/2026 10:00:00</td><td><a href="https://diges.unicz.it/${path}">${title}</a></td><td></td></tr>`;
+const today = new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: '2-digit', year: 'numeric' }); // new notices older than 30 days are not sent
+const row = (path, title) => `<tr><td>${today} 10:00:00</td><td><a href="https://diges.unicz.it/${path}">${title}</a></td><td></td></tr>`;
 const item = (id, title) => `<item><title>${title}</title><link>https://www.fondazioneumg.it/bandi/${id}</link><description>bando</description></item>`;
 const detail = (text) => `<div class="my-5" style="text-align:justify;"><p>${text}</p></div>`;
 
