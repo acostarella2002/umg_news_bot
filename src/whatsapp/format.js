@@ -22,11 +22,19 @@ export function validateTemplate(template) {
 // Template shipped in config/ (copied into the Docker image with the sources).
 export const messageTemplate = validateTemplate(JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'config', 'message.json'), 'utf8')));
 
-// Remove WhatsApp markup characters from scraped text so titles cannot break formatting.
+// A link inside a text: it ends at a space or ")", and never includes * ~ ` or a trailing "_" (those wrap it in bold, strike or italics).
+const LINK_PATTERN = /https?:\/\/[^\s)*~`]*[^\s)*~`_]/;
+// Remove WhatsApp markup characters from scraped text so titles cannot break formatting; links are kept whole, as "_" is part of many addresses (forms, PDFs).
 const stripWhatsAppMarkup = (text) =>
   String(text ?? '')
-    .replace(/[*_~`]/g, '')
-    .trim(); // shortcut: also strips legit underscores, fine for notices
+    .replace(new RegExp(`(${LINK_PATTERN.source})|[*_~\`]`, 'g'), (_, link) => link ?? '')
+    .trim(); // shortcut: outside links it also strips legit underscores, fine for notices
+// Capitals for a text, except its links (an uppercase link points elsewhere).
+const upperCaseOutsideLinks = (text) =>
+  text
+    .split(new RegExp(`(${LINK_PATTERN.source})`))
+    .map((part, index) => (index % 2 ? part : part.toLocaleUpperCase('it-IT'))) // odd parts are the links
+    .join('');
 
 // Format a Rome-local date like "08/10/2026 18:57".
 export const formatRomeDate = (isoDate) =>
@@ -53,7 +61,7 @@ export function formatNotice(notice, boardName, template = messageTemplate) {
   const values = {
     bacheca: stripWhatsAppMarkup(boardName), // which board the notice comes from
     titolo: stripWhatsAppMarkup(notice.title), // notice title
-    TITOLO: stripWhatsAppMarkup(notice.title).toLocaleUpperCase('it-IT'), // the same in capitals, accents kept ("è" -> "È")
+    TITOLO: upperCaseOutsideLinks(stripWhatsAppMarkup(notice.title)), // the same in capitals, accents kept ("è" -> "È"), links untouched
     data: formatRomeDate(notice.published), // publication date
     testo: body.length > template.maxBody ? `${body.slice(0, template.maxBody).replace(/\s+\S*$/, '')}…` : body, // excerpt cut on a word boundary
     allegati: (notice.attachments ?? [])

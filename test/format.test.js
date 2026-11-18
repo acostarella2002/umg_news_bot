@@ -73,3 +73,43 @@ test('formatNotice with a custom template', () => {
   assert.throws(() => validateTemplate({ lines: ['{titlo}'], attachment: '', maxBody: 1 }), /unknown placeholders \{titlo\}/); // typo
   assert.throws(() => validateTemplate({ lines: 'x' }), /needs lines/); // wrong shape
 });
+
+// A "_" is part of many addresses: the real case was a Google form whose link lost it and no longer opened.
+test('links keep their underscores and other markup characters', () => {
+  const form = 'https://docs.google.com/forms/d/e/1FAIpQLSf7ABpcEGGDTkwbp0h47UGge4HIrr7rf-WaW6wOFjP_vQWOPQ/viewform?usp=publish-editor'; // from notice 10586
+  const pdf = 'http://www.fondazioneumg.it/bandi/avviso_1_del_10.06.2026_148_7266.pdf'; // several underscores
+  const board = 'https://www.diges.unicz.it/corso_studio/avviso_didattica/833'; // underscores in the path
+  const body = `Compila il form _subito_:\n${form}\nvedi (${pdf}) e ~${board}~`; // markup around and between the links
+  const message = formatNotice({ url: 'https://medicina.unicz.it/avviso_didattica/10586', title: 'Convegno', body, attachments: [] }, 'B'); // shipped template
+  assert.ok(message.includes(form)); // intact, with its "_" and its query string
+  assert.ok(message.includes(`(${pdf})`)); // intact inside brackets
+  assert.ok(message.includes(` ${board}\n`)); // the strike markers around it are gone, the address is whole
+  assert.ok(message.includes('Compila il form subito:')); // markup outside links is still stripped
+  assert.ok(message.includes('https://medicina.unicz.it/avviso_didattica/10586')); // the notice link was never touched
+  const wrapped = formatNotice(
+    { url: 'https://x.unicz.it/1', title: 'T', body: '_https://x.unicz.it/a_b_ e *https://x.unicz.it/c_d* e `https://x.unicz.it/e_f`', attachments: [] },
+    'B',
+  ); // links wrapped in markup
+  assert.ok(wrapped.includes('https://x.unicz.it/a_b e https://x.unicz.it/c_d e https://x.unicz.it/e_f\n')); // the wrapping goes, the inner "_" stays
+});
+
+// Titles, attachment names and the capitals must not damage a link either.
+test('links in titles and attachment names', () => {
+  const link = 'https://docs.google.com/forms/d/e/AbC_dEf/viewform'; // case matters
+  const message = formatNotice(
+    {
+      url: 'https://x.unicz.it/1',
+      title: `Iscrizioni ${link} aperte`,
+      body: 'Testo',
+      attachments: [{ name: `Modulo ${link}`, url: 'https://x.unicz.it/scarica_allegato/1' }],
+    },
+    'B',
+    {
+      lines: ['*{TITOLO}*', '{allegati}'],
+      attachment: '• {nome}: {url}',
+      maxBody: 50,
+    },
+  ); // a title with a link, an attachment named with a link
+  assert.ok(message.startsWith(`*ISCRIZIONI ${link} APERTE*`)); // capitals around the link, never inside it
+  assert.ok(message.includes(`• Modulo ${link}: https://x.unicz.it/scarica_allegato/1`)); // the attachment keeps its own address
+});
